@@ -1,0 +1,41 @@
+name: "wshm"
+description: "AI-powered GitHub agent for OSS maintainers"
+branding:
+  icon: "zap"
+  color: "purple"
+
+inputs:
+  github-token:
+    description: "GitHub token with repo access"
+    required: true
+    default: ${{ github.token }}
+  anthropic-api-key:
+    description: "Anthropic API key for AI features"
+    required: true
+  command:
+    description: "wshm command to run (default: run --apply)"
+    required: false
+    default: "run --apply"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install wshm
+      shell: bash
+      run: |
+        cargo install --path .
+    - name: Run wshm
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        wshm ${{ inputs.command }}
+    - name: Commit state
+      shell: bash
+      run: |
+        git config user.name "wshm[bot]"
+        git config user.email "wshm[bot]@users.noreply.github.com"
+        git add .wshm/state.db
+        git diff --cached --quiet || git commit -m "chore: update wshm state"
+        git push

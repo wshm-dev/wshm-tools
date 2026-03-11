@@ -1,0 +1,25 @@
+[package]
+name = "wshm"
+version = "0.1.0"
+edition = "2021"
+description = "AI-powered GitHub agent for OSS maintainers"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/pszymkowiak/wshm"
+keywords = ["github", "ai", "triage", "automation"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+octocrab = "0.44"
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+git2 = "0.19"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
