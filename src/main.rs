@@ -10,6 +10,7 @@ mod db;
 mod github;
 mod login;
 mod pipelines;
+mod update;
 
 use cli::{Cli, Command};
 
@@ -190,6 +191,9 @@ async fn main() -> Result<()> {
         },
         Some(Command::Login(args)) => {
             login::run(args)?;
+        }
+        Some(Command::Update(args)) => {
+            update::check_and_update(args.apply, cli.json).await?;
         }
         Some(Command::Daemon(args)) => {
             if args.install {

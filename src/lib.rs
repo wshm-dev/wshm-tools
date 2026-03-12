@@ -6,3 +6,4 @@ pub mod db;
 pub mod github;
 pub mod login;
 pub mod pipelines;
+pub mod update;

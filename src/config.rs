@@ -37,6 +37,9 @@ pub struct Config {
     #[serde(default)]
     pub branding: BrandingConfig,
 
+    #[serde(default)]
+    pub update: UpdateConfig,
+
     /// Resolved at runtime, not from config file
     #[serde(skip)]
     pub repo_owner: String,
@@ -395,6 +398,35 @@ fn default_command_prefix() -> String {
     "/wshm".to_string()
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateConfig {
+    /// Enable automatic update checks in daemon mode (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Check interval in hours (default: 6)
+    #[serde(default = "default_update_interval")]
+    pub interval_hours: u32,
+
+    /// Auto-apply updates without confirmation (default: false, daemon sets true)
+    #[serde(default)]
+    pub auto_apply: bool,
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_hours: default_update_interval(),
+            auto_apply: false,
+        }
+    }
+}
+
+fn default_update_interval() -> u32 {
+    6
+}
+
 fn default_daemon_bind() -> String {
     "0.0.0.0:3000".to_string()
 }
@@ -502,6 +534,11 @@ auto_resolve_confidence = 0.85
 interval_minutes = 5
 full_sync_interval_hours = 24
 
+# [update]
+# enabled = false                        # Enable automatic update checks in daemon mode
+# interval_hours = 6                     # Check interval
+# auto_apply = false                     # Auto-install updates (daemon uses true)
+
 # [branding]
 # name = "wshm"                       # Bot display name in comments
 # url = "https://github.com/pszymkowiak/wshm"  # Link in comment footers
@@ -540,6 +577,7 @@ impl Default for Config {
             fix: FixConfig::default(),
             daemon: DaemonConfig::default(),
             branding: BrandingConfig::default(),
+            update: UpdateConfig::default(),
             repo_owner: String::new(),
             repo_name: String::new(),
             wshm_dir: PathBuf::from(".wshm"),

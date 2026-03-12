@@ -72,8 +72,18 @@ pub enum Command {
     #[command(subcommand)]
     Model(ModelCommand),
 
+    /// Check for updates and install latest release
+    Update(UpdateArgs),
+
     /// Start persistent daemon with webhook server
     Daemon(DaemonArgs),
+}
+
+#[derive(clap::Args)]
+pub struct UpdateArgs {
+    /// Actually install the update (check only by default)
+    #[arg(long)]
+    pub apply: bool,
 }
 
 #[derive(Clone, clap::Args)]
