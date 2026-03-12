@@ -373,6 +373,15 @@ fn extract_oauth_token(v: &serde_json::Value) -> Option<String> {
         })
 }
 
+/// Check if the `claude` CLI is installed and accessible.
+fn is_claude_cli_available() -> bool {
+    std::process::Command::new("claude")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Resolve the best Anthropic auth: OAuth token (Max/Pro) > API key
 pub fn resolve_anthropic_auth() -> Option<(String, bool)> {
     // Priority 1: OAuth token from .wshm/credentials
@@ -400,6 +409,11 @@ pub fn resolve_anthropic_auth() -> Option<(String, bool)> {
         if !key.is_empty() {
             return Some((key, false));
         }
+    }
+
+    // Priority 5: claude CLI available (Max/Pro/Team — no token needed, uses `claude -p`)
+    if is_claude_cli_available() {
+        return Some(("claude-cli".to_string(), true));
     }
 
     None

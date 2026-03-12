@@ -193,7 +193,7 @@ async fn triage_issue(
         // Auto-fix: if enabled and issue is a simple fix with high confidence
         if config.triage.auto_fix
             && classification.is_simple_fix
-            && classification.category == "bug"
+            && matches!(classification.category.as_str(), "bug" | "feature")
             && classification.confidence >= config.triage.auto_fix_confidence
         {
             info!(
@@ -224,7 +224,7 @@ async fn triage_issue(
 fn will_auto_fix(c: &IssueClassification, config: &Config) -> bool {
     config.triage.auto_fix
         && c.is_simple_fix
-        && c.category == "bug"
+        && matches!(c.category.as_str(), "bug" | "feature")
         && c.confidence >= config.triage.auto_fix_confidence
 }
 
