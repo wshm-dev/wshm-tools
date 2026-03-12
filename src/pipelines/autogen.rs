@@ -62,7 +62,9 @@ pub async fn run(config: &Config, db: &Database, gh: &GhClient, args: &FixArgs) 
         return Ok(());
     }
 
-    // Step 1: Create and checkout branch
+    // Step 1: Start from a clean base branch, then create fix branch
+    let base_branch = &config.fix.base_branch;
+    ensure_clean_base(base_branch)?;
     create_branch(&branch)?;
 
     // Step 2: Run the AI tool
@@ -71,7 +73,7 @@ pub async fn run(config: &Config, db: &Database, gh: &GhClient, args: &FixArgs) 
 
     if !result.success {
         println!("AI tool failed: {}", result.output);
-        cleanup_branch(&branch)?;
+        cleanup_branch(base_branch, &branch)?;
         return Ok(());
     }
 
@@ -79,7 +81,7 @@ pub async fn run(config: &Config, db: &Database, gh: &GhClient, args: &FixArgs) 
     let has_changes = check_changes()?;
     if !has_changes {
         println!("No changes generated. The AI tool did not modify any files.");
-        cleanup_branch(&branch)?;
+        cleanup_branch(base_branch, &branch)?;
         return Ok(());
     }
 
@@ -95,7 +97,7 @@ pub async fn run(config: &Config, db: &Database, gh: &GhClient, args: &FixArgs) 
                 tracing::warn!("  ⚠ {v}");
             }
             println!("Aborting auto-fix: suspicious patterns detected in generated code.");
-            cleanup_branch(&branch)?;
+            cleanup_branch(base_branch, &branch)?;
 
             // Post warning on the issue
             let warning = format!(
@@ -138,9 +140,9 @@ pub async fn run(config: &Config, db: &Database, gh: &GhClient, args: &FixArgs) 
     let pr_title = format!("fix: {} (#{}) [{}]", issue.title, issue.number, config.branding.name);
 
     let create_result = if config.fix.draft_pr {
-        gh.create_draft_pr(&pr_title, &pr_body, &branch, "main").await
+        gh.create_draft_pr(&pr_title, &pr_body, &branch, base_branch).await
     } else {
-        gh.create_pr(&pr_title, &pr_body, &branch, "main").await
+        gh.create_pr(&pr_title, &pr_body, &branch, base_branch).await
     };
 
     match create_result {
@@ -469,20 +471,47 @@ async fn run_in_podman(
 
 // ── Git helpers ───────────────────────────────────────────────
 
+/// Ensure we start from a clean, up-to-date base branch.
+/// Discards any local modifications so the fix branch starts pristine.
+fn ensure_clean_base(base_branch: &str) -> Result<()> {
+    // Checkout the base branch
+    let status = std::process::Command::new("git")
+        .args(["checkout", base_branch])
+        .status()
+        .context("Failed to checkout base branch")?;
+    if !status.success() {
+        anyhow::bail!("Failed to checkout base branch: {base_branch}");
+    }
+
+    // Discard any local modifications
+    std::process::Command::new("git")
+        .args(["reset", "--hard", &format!("origin/{base_branch}")])
+        .status()
+        .context("Failed to reset to origin")?;
+
+    // Pull latest
+    std::process::Command::new("git")
+        .args(["pull", "--ff-only"])
+        .status()
+        .ok();
+
+    Ok(())
+}
+
 fn create_branch(branch: &str) -> Result<()> {
+    // Delete local branch if it exists (stale from previous attempt)
+    std::process::Command::new("git")
+        .args(["branch", "-D", branch])
+        .status()
+        .ok();
+
     let status = std::process::Command::new("git")
         .args(["checkout", "-b", branch])
         .status()
         .context("Failed to create git branch")?;
 
     if !status.success() {
-        let status = std::process::Command::new("git")
-            .args(["checkout", branch])
-            .status()
-            .context("Failed to checkout git branch")?;
-        if !status.success() {
-            anyhow::bail!("Failed to create or checkout branch: {branch}");
-        }
+        anyhow::bail!("Failed to create branch: {branch}");
     }
     Ok(())
 }
@@ -525,9 +554,9 @@ fn commit_and_push(branch: &str, issue_number: u64) -> Result<()> {
     Ok(())
 }
 
-fn cleanup_branch(branch: &str) -> Result<()> {
+fn cleanup_branch(base_branch: &str, branch: &str) -> Result<()> {
     std::process::Command::new("git")
-        .args(["checkout", "-"])
+        .args(["checkout", base_branch])
         .status()
         .ok();
     std::process::Command::new("git")

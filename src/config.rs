@@ -274,6 +274,10 @@ pub struct FixConfig {
     /// Create PRs as draft (require manual review before merge)
     #[serde(default = "default_true")]
     pub draft_pr: bool,
+
+    /// Base branch to create fix branches from (default: "main")
+    #[serde(default = "default_base_branch")]
+    pub base_branch: String,
 }
 
 impl Default for FixConfig {
@@ -285,8 +289,13 @@ impl Default for FixConfig {
             trusted_authors_only: true,
             scan_diff: true,
             draft_pr: true,
+            base_branch: default_base_branch(),
         }
     }
+}
+
+fn default_base_branch() -> String {
+    "main".to_string()
 }
 
 fn default_fix_tool() -> String {
@@ -554,6 +563,7 @@ full_sync_interval_hours = 24
 # trusted_authors_only = true   # Only auto-fix issues from repo collaborators
 # scan_diff = true               # Scan generated code for suspicious patterns
 # draft_pr = true                # Create PRs as draft (require human review)
+# base_branch = "main"           # Base branch for fix PRs (e.g. "develop")
 
 # [update]
 # enabled = false                        # Enable automatic update checks in daemon mode
