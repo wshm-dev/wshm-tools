@@ -134,7 +134,7 @@ pub fn run(args: &LoginArgs) -> Result<()> {
         return show_status();
     }
 
-    let do_all = !args.github && !args.ai;
+    let do_all = !args.github && !args.ai && !args.claude;
 
     ensure_gitignore();
 
@@ -142,7 +142,9 @@ pub fn run(args: &LoginArgs) -> Result<()> {
         login_github()?;
     }
 
-    if do_all || args.ai {
+    if args.claude {
+        login_claude()?;
+    } else if do_all || args.ai {
         login_ai()?;
     }
 
@@ -279,6 +281,113 @@ fn login_ai() -> Result<()> {
     Ok(())
 }
 
+fn login_claude() -> Result<()> {
+    println!("\n── Claude OAuth (Max/Pro/Team) ──\n");
+
+    // Check if claude CLI is available
+    let claude_available = std::process::Command::new("claude")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if claude_available {
+        println!("Found `claude` CLI. Launching OAuth login...\n");
+        let status = std::process::Command::new("claude")
+            .arg("login")
+            .status()
+            .context("Failed to run claude login")?;
+
+        if status.success() {
+            // Read the token from ~/.claude/.credentials.json
+            if let Some(token) = read_claude_oauth_token() {
+                let mut creds = load_credentials();
+                creds.insert("ANTHROPIC_OAUTH_TOKEN".to_string(), token);
+                save_credentials(&creds)?;
+                println!("Claude OAuth token saved. Your Max/Pro subscription will be used.");
+                return Ok(());
+            }
+            println!("Claude login succeeded but could not read token. Using claude CLI directly.");
+            return Ok(());
+        }
+        println!("claude login failed.");
+    }
+
+    // Fallback: manual OAuth via device flow is not publicly available
+    // Offer API key as alternative
+    println!("`claude` CLI not found. Install it first:");
+    println!("  npm install -g @anthropic-ai/claude-code");
+    println!("  claude login\n");
+    println!("Or use an API key instead:");
+    login_ai()?;
+    Ok(())
+}
+
+/// Read OAuth access token from ~/.claude/.credentials.json
+fn read_claude_oauth_token() -> Option<String> {
+    // Check CLAUDE_CREDENTIALS_JSON env first (CI)
+    if let Ok(json_str) = std::env::var("CLAUDE_CREDENTIALS_JSON") {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            if let Some(token) = extract_oauth_token(&v) {
+                return Some(token);
+            }
+        }
+    }
+
+    // Check ~/.claude/.credentials.json
+    let home = dirs::home_dir()?;
+    let creds_path = home.join(".claude").join(".credentials.json");
+    let content = fs::read_to_string(&creds_path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
+    extract_oauth_token(&v)
+}
+
+fn extract_oauth_token(v: &serde_json::Value) -> Option<String> {
+    // Format: {"claudeAiOauth": {"accessToken": "..."}}
+    v.get("claudeAiOauth")
+        .and_then(|o| o.get("accessToken"))
+        .and_then(|t| t.as_str())
+        .map(String::from)
+        .or_else(|| {
+            // Alternative format: {"accessToken": "..."}
+            v.get("accessToken")
+                .and_then(|t| t.as_str())
+                .map(String::from)
+        })
+}
+
+/// Resolve the best Anthropic auth: OAuth token (Max/Pro) > API key
+pub fn resolve_anthropic_auth() -> Option<(String, bool)> {
+    // Priority 1: OAuth token from .wshm/credentials
+    let creds = load_credentials();
+    if let Some(token) = creds.get("ANTHROPIC_OAUTH_TOKEN") {
+        if !token.is_empty() {
+            return Some((token.clone(), true)); // (token, is_oauth)
+        }
+    }
+
+    // Priority 2: OAuth token from env
+    if let Ok(token) = std::env::var("ANTHROPIC_OAUTH_TOKEN") {
+        if !token.is_empty() {
+            return Some((token, true));
+        }
+    }
+
+    // Priority 3: OAuth from ~/.claude/.credentials.json
+    if let Some(token) = read_claude_oauth_token() {
+        return Some((token, true));
+    }
+
+    // Priority 4: API key
+    if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+        if !key.is_empty() {
+            return Some((key, false));
+        }
+    }
+
+    None
+}
+
 fn show_status() -> Result<()> {
     println!("── Authentication Status ──\n");
 
@@ -313,13 +422,23 @@ fn show_status() -> Result<()> {
         println!("not configured");
     }
 
-    // AI
+    // Claude OAuth
+    print!("Claude: ");
+    if creds.contains_key("ANTHROPIC_OAUTH_TOKEN") {
+        println!("authenticated (OAuth Max/Pro)");
+    } else if read_claude_oauth_token().is_some() {
+        println!("authenticated (~/.claude credentials)");
+    } else {
+        println!("not configured (run `wshm login --claude`)");
+    }
+
+    // AI API key
     let ai_vars = [
         "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
         "MISTRAL_API_KEY", "GROQ_API_KEY", "DEEPSEEK_API_KEY", "XAI_API_KEY",
     ];
 
-    print!("AI:     ");
+    print!("AI key: ");
     let from_env: Vec<&&str> = ai_vars.iter().filter(|v| std::env::var(v).is_ok()).collect();
     let from_creds: Vec<&&str> = ai_vars.iter().filter(|v| creds.contains_key(**v)).collect();
 

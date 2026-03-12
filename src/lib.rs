@@ -4,4 +4,5 @@ pub mod config;
 pub mod daemon;
 pub mod db;
 pub mod github;
+pub mod login;
 pub mod pipelines;

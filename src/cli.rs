@@ -226,9 +226,13 @@ pub struct LoginArgs {
     #[arg(long)]
     pub github: bool,
 
-    /// Only setup AI provider authentication
+    /// Only setup AI provider authentication (API key)
     #[arg(long)]
     pub ai: bool,
+
+    /// Login with Claude Max/Pro/Team (OAuth, uses your subscription)
+    #[arg(long)]
+    pub claude: bool,
 
     /// Show current authentication status
     #[arg(long)]

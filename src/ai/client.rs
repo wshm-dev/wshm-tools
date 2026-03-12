@@ -9,6 +9,7 @@ struct ProviderConfig {
     api_key: String,
     model: String,
     kind: ProviderKind,
+    is_oauth: bool,
 }
 
 enum ProviderKind {
@@ -30,12 +31,19 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
 
     match provider {
         // ── Anthropic (custom API format) ──────────────────────────
-        "anthropic" => Ok(ProviderConfig {
-            api_url: base_url.unwrap_or_else(|| "https://api.anthropic.com/v1/messages".into()),
-            api_key: env_key(&["ANTHROPIC_API_KEY"])?,
-            model,
-            kind: ProviderKind::Anthropic,
-        }),
+        "anthropic" => {
+            let (key, is_oauth) = crate::login::resolve_anthropic_auth()
+                .ok_or_else(|| anyhow::anyhow!(
+                    "No Anthropic credentials found. Run `wshm login --claude` (Max/Pro) or set ANTHROPIC_API_KEY"
+                ))?;
+            Ok(ProviderConfig {
+                api_url: base_url.unwrap_or_else(|| "https://api.anthropic.com/v1/messages".into()),
+                api_key: key,
+                model,
+                kind: ProviderKind::Anthropic,
+                is_oauth,
+            })
+        }
 
         // ── Google Gemini (custom API format) ──────────────────────
         "google" | "gemini" => Ok(ProviderConfig {
@@ -47,6 +55,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["GOOGLE_API_KEY", "GEMINI_API_KEY"])?,
             model,
             kind: ProviderKind::Google,
+            is_oauth: false,
         }),
 
         // ── OpenAI ─────────────────────────────────────────────────
@@ -56,6 +65,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["OPENAI_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Mistral ────────────────────────────────────────────────
@@ -65,6 +75,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["MISTRAL_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Groq ──────────────────────────────────────────────────
@@ -74,6 +85,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["GROQ_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── DeepSeek ──────────────────────────────────────────────
@@ -83,6 +95,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["DEEPSEEK_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── xAI (Grok) ───────────────────────────────────────────
@@ -92,6 +105,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["XAI_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Together AI ───────────────────────────────────────────
@@ -101,6 +115,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["TOGETHER_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Fireworks AI ──────────────────────────────────────────
@@ -110,6 +125,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["FIREWORKS_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Perplexity ───────────────────────────────────────────
@@ -119,6 +135,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["PERPLEXITY_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Cohere ────────────────────────────────────────────────
@@ -128,6 +145,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["COHERE_API_KEY", "CO_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── OpenRouter (aggregator) ───────────────────────────────
@@ -137,6 +155,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["OPENROUTER_API_KEY"])?,
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Ollama (local, no API key) ────────────────────────────
@@ -146,6 +165,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: std::env::var("OLLAMA_API_KEY").unwrap_or_default(),
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         // ── Azure OpenAI ─────────────────────────────────────────
@@ -162,6 +182,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
                 api_key: env_key(&["AZURE_OPENAI_API_KEY"])?,
                 model,
                 kind: ProviderKind::OpenAiCompat,
+                is_oauth: false,
             })
         }
 
@@ -171,6 +192,7 @@ fn resolve_provider(config: &Config) -> Result<ProviderConfig> {
             api_key: env_key(&["WSHM_AI_API_KEY", "AI_API_KEY"]).unwrap_or_default(),
             model,
             kind: ProviderKind::OpenAiCompat,
+            is_oauth: false,
         }),
 
         "local" => anyhow::bail!(
@@ -231,12 +253,19 @@ impl AiClient {
             ]
         });
 
-        let response = self
+        let mut req = self
             .http
             .post(&self.provider.api_url)
-            .header("x-api-key", &self.provider.api_key)
             .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+
+        if self.provider.is_oauth {
+            req = req.header("Authorization", format!("Bearer {}", self.provider.api_key));
+        } else {
+            req = req.header("x-api-key", &self.provider.api_key);
+        }
+
+        let response = req
             .json(&body)
             .send()
             .await
