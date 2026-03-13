@@ -1,4 +1,4 @@
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: Source Available](https://img.shields.io/badge/License-Source--Available-blue.svg)](LICENSE)
 
 # wshm (wishmaster)
 
@@ -338,4 +338,4 @@ See [CLAUDE.md](CLAUDE.md) for the full architecture document, including:
 
 ## License
 
-[MIT](LICENSE)
+[Source-Available License v1.0](LICENSE) — Free for individuals and teams up to 20 people. Commercial license required above that threshold. Contact: patrick.szymkowiak@rtk-ai.app
