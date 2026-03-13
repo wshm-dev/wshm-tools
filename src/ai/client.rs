@@ -223,10 +223,18 @@ fn env_key(names: &[&str]) -> Result<String> {
 }
 
 impl AiClient {
+    fn build_http_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    }
+
     pub fn new(config: &Config) -> Result<Self> {
         let provider = resolve_provider(config, None)?;
         Ok(Self {
-            http: reqwest::Client::new(),
+            http: Self::build_http_client(),
             provider,
         })
     }
@@ -235,7 +243,7 @@ impl AiClient {
     pub fn with_model(config: &Config, model: &str) -> Result<Self> {
         let provider = resolve_provider(config, Some(model))?;
         Ok(Self {
-            http: reqwest::Client::new(),
+            http: Self::build_http_client(),
             provider,
         })
     }
@@ -379,12 +387,11 @@ impl AiClient {
             }
         });
 
-        let url = format!("{}?key={}", self.provider.api_url, self.provider.api_key);
-
         let response = self
             .http
-            .post(&url)
+            .post(&self.provider.api_url)
             .header("content-type", "application/json")
+            .header("x-goog-api-key", &self.provider.api_key)
             .json(&body)
             .send()
             .await

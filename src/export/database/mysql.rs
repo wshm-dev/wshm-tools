@@ -5,6 +5,19 @@ use mysql_async::prelude::*;
 use crate::config::DatabaseExportConfig;
 use crate::export::{ExportEvent, ExportSink};
 
+/// Validate that a table/index name is safe for SQL identifier use.
+fn validate_identifier(name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("Table name cannot be empty");
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        anyhow::bail!(
+            "Invalid table name '{name}': only alphanumeric characters and underscores are allowed"
+        );
+    }
+    Ok(())
+}
+
 /// MySQL/MariaDB sink. Auto-creates the events table on first use.
 pub struct MysqlSink {
     pool: mysql_async::Pool,
@@ -19,13 +32,16 @@ impl MysqlSink {
             .as_deref()
             .unwrap_or("mysql://root@localhost/wshm");
         let pool = mysql_async::Pool::new(uri);
+        let table = config
+            .index
+            .clone()
+            .unwrap_or_else(|| "wshm_events".to_string());
+
+        validate_identifier(&table)?;
 
         Ok(Self {
             pool,
-            table: config
-                .index
-                .clone()
-                .unwrap_or_else(|| "wshm_events".to_string()),
+            table,
             initialized: tokio::sync::OnceCell::new(),
         })
     }

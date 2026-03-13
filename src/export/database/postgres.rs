@@ -4,6 +4,20 @@ use async_trait::async_trait;
 use crate::config::DatabaseExportConfig;
 use crate::export::{ExportEvent, ExportSink};
 
+/// Validate that a table/index name is safe for SQL identifier use.
+/// Only allows alphanumeric characters and underscores.
+fn validate_identifier(name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("Table name cannot be empty");
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        anyhow::bail!(
+            "Invalid table name '{name}': only alphanumeric characters and underscores are allowed"
+        );
+    }
+    Ok(())
+}
+
 /// PostgreSQL sink. Auto-creates the events table on first use.
 pub struct PostgresSink {
     pool: sqlx::PgPool,
@@ -15,13 +29,16 @@ impl PostgresSink {
     pub async fn new(config: &DatabaseExportConfig) -> Result<Self> {
         let uri = config.uri.as_deref().unwrap_or("postgres://localhost/wshm");
         let pool = sqlx::PgPool::connect(uri).await?;
+        let table = config
+            .index
+            .clone()
+            .unwrap_or_else(|| "wshm_events".to_string());
+
+        validate_identifier(&table)?;
 
         Ok(Self {
             pool,
-            table: config
-                .index
-                .clone()
-                .unwrap_or_else(|| "wshm_events".to_string()),
+            table,
             initialized: tokio::sync::OnceCell::new(),
         })
     }

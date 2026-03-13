@@ -191,15 +191,19 @@ async fn handle_webhook(
 }
 
 fn verify_signature(secret: &str, body: &[u8], sig_header: &str) -> bool {
-    let expected = match sig_header.strip_prefix("sha256=") {
+    let expected_hex = match sig_header.strip_prefix("sha256=") {
         Some(h) => h,
         None => return false,
+    };
+    let expected_bytes = match hex::decode(expected_hex) {
+        Ok(b) => b,
+        Err(_) => return false,
     };
     let mut mac = match Hmac::<Sha256>::new_from_slice(secret.as_bytes()) {
         Ok(m) => m,
         Err(_) => return false,
     };
     mac.update(body);
-    let computed = hex::encode(mac.finalize().into_bytes());
-    computed == expected
+    // Constant-time comparison via hmac::Mac::verify_slice
+    mac.verify_slice(&expected_bytes).is_ok()
 }

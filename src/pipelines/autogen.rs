@@ -349,12 +349,30 @@ struct ToolResult {
 ///   3. ANTHROPIC_API_KEY env var (fallback: API key)
 ///      → pass as -e
 fn resolve_claude_dir() -> Option<PathBuf> {
-    // Priority 1: CI secret → write to temp dir
+    // Priority 1: CI secret → write to temp dir with restricted permissions
     if let Ok(creds_json) = std::env::var("CLAUDE_CREDENTIALS_JSON") {
         let tmp_claude_dir = std::env::temp_dir().join("wshm-claude-creds");
         if std::fs::create_dir_all(&tmp_claude_dir).is_ok() {
+            // Restrict directory permissions to owner only
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &tmp_claude_dir,
+                    std::fs::Permissions::from_mode(0o700),
+                );
+            }
             let creds_path = tmp_claude_dir.join(".credentials.json");
             if std::fs::write(&creds_path, &creds_json).is_ok() {
+                // Restrict file permissions to owner only
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(
+                        &creds_path,
+                        std::fs::Permissions::from_mode(0o600),
+                    );
+                }
                 info!("Using CLAUDE_CREDENTIALS_JSON from environment (CI secret)");
                 return Some(tmp_claude_dir);
             }
