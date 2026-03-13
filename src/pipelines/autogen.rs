@@ -429,7 +429,10 @@ async fn run_claude_code(prompt: &str, model: Option<&str>) -> Result<ToolResult
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     if output.status.success() {
-        info!("claude -p completed successfully ({} bytes output)", stdout.len());
+        info!(
+            "claude -p completed successfully ({} bytes output)",
+            stdout.len()
+        );
     } else {
         tracing::error!("claude -p failed: {stderr}");
     }
