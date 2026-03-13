@@ -58,7 +58,7 @@ pub async fn run(
         return Ok(());
     }
 
-    let mut results: Vec<ReviewOutput> = Vec::new();
+    let mut results: Vec<ReviewOutput> = Vec::with_capacity(pulls.len());
 
     for pr in &pulls {
         info!("Reviewing PR #{}: {}", pr.number, pr.title);
@@ -165,8 +165,8 @@ async fn review_per_file(
     pr_body: &str,
     file_chunks: &[(String, String)],
 ) -> Result<InlineReviewResult> {
-    let mut all_comments: Vec<InlineComment> = Vec::new();
-    let mut summaries: Vec<String> = Vec::new();
+    let mut all_comments: Vec<InlineComment> = Vec::with_capacity(file_chunks.len() * 2);
+    let mut summaries: Vec<String> = Vec::with_capacity(file_chunks.len());
     let mut stats = ReviewStats::default();
 
     for (file_path, file_diff) in file_chunks {

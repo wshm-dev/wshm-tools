@@ -299,8 +299,10 @@ fn jaccard_similarity(
 }
 
 fn extract_linked_issues(body: &str) -> std::collections::HashSet<u64> {
-    let re = regex::Regex::new(r"(?i)\b(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)").unwrap();
-    re.captures_iter(body)
+    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?i)\b(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)").unwrap()
+    });
+    RE.captures_iter(body)
         .filter_map(|cap| cap[1].parse().ok())
         .collect()
 }

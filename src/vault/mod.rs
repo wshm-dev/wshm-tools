@@ -54,11 +54,12 @@ pub fn build_resolver(
 /// Resolve all `vault(path/key)` placeholders in a string.
 /// Returns the string with placeholders replaced by secret values.
 pub async fn resolve_placeholders(input: &str, resolver: &dyn VaultResolver) -> Result<String> {
-    let re = Regex::new(r#"vault\(([^)]+)\)"#)?;
+    static RE: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r#"vault\(([^)]+)\)"#).unwrap());
     let mut result = input.to_string();
 
     // Collect all matches first to avoid borrow issues
-    let matches: Vec<(String, String)> = re
+    let matches: Vec<(String, String)> = RE
         .captures_iter(input)
         .map(|cap| {
             let full = cap[0].to_string();

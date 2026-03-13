@@ -58,7 +58,7 @@ pub async fn run(
     }
 
     let existing_issues = db.get_open_issues()?;
-    let mut results: Vec<TriageOutput> = Vec::new();
+    let mut results: Vec<TriageOutput> = Vec::with_capacity(issues.len());
 
     for issue in &issues {
         info!("Triaging issue #{}: {}", issue.number, issue.title);

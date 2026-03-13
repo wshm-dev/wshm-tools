@@ -135,9 +135,11 @@ pub fn run(db: &Database, args: &ReportArgs, repo_name: &str) -> Result<()> {
 
 /// Extract linked issue numbers from PR body using "fixes #N", "closes #N", "resolves #N"
 fn extract_issue_links(body: &str) -> Vec<(String, u64)> {
-    let re = Regex::new(r"(?i)\b(fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)").unwrap();
+    static RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+        Regex::new(r"(?i)\b(fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)").unwrap()
+    });
     let mut seen = std::collections::HashSet::new();
-    re.captures_iter(body)
+    RE.captures_iter(body)
         .filter_map(|cap| {
             let link_type = cap[1].to_lowercase();
             let num: u64 = cap[2].parse().ok()?;

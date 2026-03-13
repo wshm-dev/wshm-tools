@@ -56,7 +56,7 @@ pub async fn run(
         return Ok(());
     }
 
-    let mut results: Vec<PrAnalysisOutput> = Vec::new();
+    let mut results: Vec<PrAnalysisOutput> = Vec::with_capacity(pulls.len());
 
     for pr in &pulls {
         info!("Analyzing PR #{}: {}", pr.number, pr.title);
