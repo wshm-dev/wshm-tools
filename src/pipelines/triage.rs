@@ -162,11 +162,17 @@ async fn triage_issue(
     );
 
     if apply && classification.confidence >= config.triage.auto_fix_confidence {
-        // Apply labels
-        if !classification.suggested_labels.is_empty() {
-            gh.label_issue(issue.number, &classification.suggested_labels)
-                .await?;
-            db.update_issue_labels(issue.number, &classification.suggested_labels)?;
+        // Apply labels (include priority label if priority is set)
+        let mut labels = classification.suggested_labels.clone();
+        if let Some(ref priority) = classification.priority {
+            let priority_label = format!("priority:{priority}");
+            if !labels.contains(&priority_label) {
+                labels.push(priority_label);
+            }
+        }
+        if !labels.is_empty() {
+            gh.label_issue(issue.number, &labels).await?;
+            db.update_issue_labels(issue.number, &labels)?;
         }
 
         // Post triage comment
