@@ -88,6 +88,10 @@ pub struct UpdateArgs {
 
 #[derive(Clone, clap::Args)]
 pub struct DaemonArgs {
+    /// Path to global multi-repo config (e.g. ~/.wshm/global.toml)
+    #[arg(long)]
+    pub config: Option<std::path::PathBuf>,
+
     /// Bind address (default: 0.0.0.0:3000)
     #[arg(long)]
     pub bind: Option<String>,

@@ -263,8 +263,15 @@ async fn main() -> Result<()> {
                 daemon::systemd::uninstall()?;
                 return Ok(());
             }
-            let config = config::Config::load(&cli)?;
-            daemon::run(config, args.clone()).await?;
+            if let Some(ref config_path) = args.config {
+                // Multi-repo mode
+                let global = config::GlobalConfig::load(config_path)?;
+                daemon::run_multi(global, args.clone()).await?;
+            } else {
+                // Single-repo mode (backward compatible)
+                let config = config::Config::load(&cli)?;
+                daemon::run(config, args.clone()).await?;
+            }
         }
         Some(Command::Config(config_cmd)) => match config_cmd {
             cli::ConfigCommand::Init => {

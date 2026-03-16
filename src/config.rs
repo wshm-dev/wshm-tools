@@ -554,7 +554,99 @@ fn default_icm_prefix() -> String {
     "wshm".to_string()
 }
 
+// ── Global multi-repo config ──────────────────────────────────
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GlobalConfig {
+    #[serde(default)]
+    pub daemon: GlobalDaemonConfig,
+
+    #[serde(default)]
+    pub ai: Option<AiConfig>,
+
+    pub repos: Vec<RepoEntry>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct GlobalDaemonConfig {
+    #[serde(default = "default_daemon_bind")]
+    pub bind: String,
+
+    #[serde(default)]
+    pub webhook_secret: Option<String>,
+
+    #[serde(default)]
+    pub apply: bool,
+
+    #[serde(default)]
+    pub poll: bool,
+
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval: u64,
+}
+
+fn default_poll_interval() -> u64 {
+    30
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RepoEntry {
+    /// Repository slug: "owner/repo"
+    pub slug: String,
+
+    /// Absolute path to the local checkout
+    pub path: PathBuf,
+
+    /// Per-repo apply override (inherits from [daemon].apply if not set)
+    #[serde(default)]
+    pub apply: Option<bool>,
+
+    /// Per-repo webhook secret override
+    #[serde(default)]
+    pub secret: Option<String>,
+}
+
+impl GlobalConfig {
+    pub fn load(path: &Path) -> Result<Self> {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read global config: {}", path.display()))?;
+        let config: Self = toml::from_str(&content)
+            .with_context(|| format!("Failed to parse global config: {}", path.display()))?;
+        if config.repos.is_empty() {
+            anyhow::bail!("Global config has no [[repos]] entries");
+        }
+        Ok(config)
+    }
+}
+
 impl Config {
+    /// Load a Config for a specific repo from its working directory.
+    /// Used by multi-repo daemon — slug is provided, no git detection needed.
+    pub fn load_for_repo(repo_path: &Path, slug: &str) -> Result<Self> {
+        let wshm_dir = repo_path.join(".wshm");
+        let config_path = wshm_dir.join("config.toml");
+
+        let mut config: Config = if config_path.exists() {
+            let content = fs::read_to_string(&config_path)
+                .with_context(|| format!("Failed to read {}", config_path.display()))?;
+            toml::from_str(&content)
+                .with_context(|| format!("Failed to parse {}", config_path.display()))?
+        } else {
+            Config::default()
+        };
+
+        config.wshm_dir = wshm_dir;
+
+        let parts: Vec<&str> = slug.splitn(2, '/').collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid repo slug: {slug} (expected owner/repo)");
+        }
+        config.repo_owner = parts[0].to_string();
+        config.repo_name = parts[1].to_string();
+
+        Ok(config)
+    }
+
     pub fn fix_secret_env_vars(&self) -> Vec<String> {
         self.fix.secret_env.clone()
     }

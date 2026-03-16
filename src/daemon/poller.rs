@@ -14,6 +14,44 @@ use super::DaemonState;
 /// Poll interval (default 30s, GitHub events API has 1-min cache)
 const POLL_INTERVAL_SECS: u64 = 30;
 
+/// Multi-repo poller: tags events with the repo slug before sending.
+pub async fn run_multi(
+    state: Arc<DaemonState>,
+    tx: mpsc::Sender<(String, WebhookEvent)>,
+    interval_secs: Option<u64>,
+    slug: String,
+) {
+    let interval = Duration::from_secs(interval_secs.unwrap_or(POLL_INTERVAL_SECS));
+    let mut last_event_id: Option<String> = None;
+
+    info!(
+        "[{slug}] Event poller started (every {}s)",
+        interval.as_secs()
+    );
+
+    loop {
+        tokio::time::sleep(interval).await;
+
+        match poll_events(&state, &mut last_event_id).await {
+            Ok(events) => {
+                if events.is_empty() {
+                    debug!("[{slug}] No new events");
+                } else {
+                    info!("[{slug}] Polled {} new event(s)", events.len());
+                }
+                for event in events {
+                    if let Err(e) = tx.send((slug.clone(), event)).await {
+                        error!("[{slug}] Failed to enqueue polled event: {e}");
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("[{slug}] Polling error: {e:#}");
+            }
+        }
+    }
+}
+
 pub async fn run(
     state: Arc<DaemonState>,
     tx: mpsc::Sender<WebhookEvent>,
@@ -30,12 +68,17 @@ pub async fn run(
     loop {
         tokio::time::sleep(interval).await;
 
-        match poll_events(&state, &tx, &mut last_event_id).await {
-            Ok(count) => {
-                if count > 0 {
-                    info!("Polled {count} new event(s)");
-                } else {
+        match poll_events(&state, &mut last_event_id).await {
+            Ok(events) => {
+                if events.is_empty() {
                     debug!("No new events");
+                } else {
+                    info!("Polled {} new event(s)", events.len());
+                }
+                for event in events {
+                    if let Err(e) = tx.send(event).await {
+                        error!("Failed to enqueue polled event: {e}");
+                    }
                 }
             }
             Err(e) => {
@@ -45,11 +88,11 @@ pub async fn run(
     }
 }
 
+/// Fetch new events from GitHub Events API and return them as WebhookEvents.
 async fn poll_events(
     state: &DaemonState,
-    tx: &mpsc::Sender<WebhookEvent>,
     last_event_id: &mut Option<String>,
-) -> anyhow::Result<usize> {
+) -> anyhow::Result<Vec<WebhookEvent>> {
     let url = format!(
         "https://api.github.com/repos/{}/{}/events?per_page=30",
         state.config.repo_owner, state.config.repo_name
@@ -61,7 +104,7 @@ async fn poll_events(
     let events: Vec<serde_json::Value> = serde_json::from_str(&body)?;
 
     if events.is_empty() {
-        return Ok(0);
+        return Ok(Vec::new());
     }
 
     // Find new events (everything after last_event_id)
@@ -88,7 +131,7 @@ async fn poll_events(
     // Process in chronological order (API returns newest first)
     new_events.reverse();
 
-    let mut dispatched = 0;
+    let mut result = Vec::new();
     for event in &new_events {
         let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -148,20 +191,14 @@ async fn poll_events(
                 }
             };
 
-        let webhook_event = WebhookEvent {
+        result.push(WebhookEvent {
             id: event_id,
             event_type: mapped_type.to_string(),
             action,
             number,
             payload: payload_str,
-        };
-
-        if let Err(e) = tx.send(webhook_event).await {
-            error!("Failed to enqueue polled event: {e}");
-        } else {
-            dispatched += 1;
-        }
+        });
     }
 
-    Ok(dispatched)
+    Ok(result)
 }

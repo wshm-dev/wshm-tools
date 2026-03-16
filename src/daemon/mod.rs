@@ -7,12 +7,13 @@ pub mod server;
 pub mod systemd;
 
 use anyhow::Result;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::info;
 
 use crate::cli::DaemonArgs;
-use crate::config::Config;
+use crate::config::{Config, GlobalConfig};
 use crate::db::Database;
 use crate::github::Client as GhClient;
 
@@ -23,6 +24,11 @@ pub struct DaemonState {
     pub gh: Arc<GhClient>,
     pub config: Arc<Config>,
     pub apply: bool,
+}
+
+/// Multi-repo state: maps "owner/repo" slug to its DaemonState.
+pub struct MultiDaemonState {
+    pub repos: HashMap<String, Arc<DaemonState>>,
 }
 
 pub async fn run(config: Config, args: DaemonArgs) -> Result<()> {
@@ -111,5 +117,131 @@ pub async fn run(config: Config, args: DaemonArgs) -> Result<()> {
     scheduler_handle.abort();
 
     info!("Daemon stopped.");
+    Ok(())
+}
+
+/// Run daemon in multi-repo mode from a global config file.
+pub async fn run_multi(global: GlobalConfig, args: DaemonArgs) -> Result<()> {
+    let global_apply = args.apply || global.daemon.apply;
+    let bind = args
+        .bind
+        .clone()
+        .unwrap_or_else(|| global.daemon.bind.clone());
+
+    let secret = args
+        .secret
+        .clone()
+        .or_else(|| std::env::var("WSHM_WEBHOOK_SECRET").ok())
+        .or_else(|| global.daemon.webhook_secret.clone());
+
+    let poll = args.poll || global.daemon.poll;
+    let poll_interval = if args.poll_interval != 30 {
+        args.poll_interval
+    } else {
+        global.daemon.poll_interval
+    };
+
+    // Build a DaemonState per repo
+    let mut repos = HashMap::new();
+    for entry in &global.repos {
+        let config = Config::load_for_repo(&entry.path, &entry.slug)?;
+
+        // Ensure .wshm dir exists
+        std::fs::create_dir_all(&config.wshm_dir)?;
+
+        let db = Arc::new(Database::open(&config)?);
+        let gh = Arc::new(GhClient::new(&config)?);
+        let apply = entry.apply.unwrap_or(global_apply);
+
+        let state = Arc::new(DaemonState {
+            db,
+            gh,
+            config: Arc::new(config),
+            apply,
+        });
+
+        info!(
+            "Loaded repo: {} (path={}, apply={})",
+            entry.slug,
+            entry.path.display(),
+            apply
+        );
+        repos.insert(entry.slug.clone(), state);
+    }
+
+    let multi = Arc::new(MultiDaemonState { repos });
+
+    let (tx, rx) = mpsc::channel::<(String, WebhookEvent)>(256);
+
+    info!(
+        "Starting multi-repo daemon on {} ({} repos, apply={}, mode={})",
+        bind,
+        multi.repos.len(),
+        global_apply,
+        if poll { "polling" } else { "webhook" }
+    );
+
+    // Spawn the multi-repo event processor
+    let processor_multi = Arc::clone(&multi);
+    let processor_handle = tokio::spawn(async move {
+        processor::run_multi(processor_multi, rx).await;
+    });
+
+    // Spawn a scheduler per repo
+    let mut scheduler_handles = Vec::new();
+    for state in multi.repos.values() {
+        let s = Arc::clone(state);
+        scheduler_handles.push(tokio::spawn(async move {
+            scheduler::run(s).await;
+        }));
+    }
+
+    // Spawn a poller per repo (if --poll)
+    let mut poller_handles = Vec::new();
+    if poll {
+        for (slug, state) in &multi.repos {
+            let s = Arc::clone(state);
+            let t = tx.clone();
+            let slug = slug.clone();
+            let interval = Some(poll_interval);
+            poller_handles.push(tokio::spawn(async move {
+                poller::run_multi(s, t, interval, slug).await;
+            }));
+        }
+    }
+
+    // Spawn the HTTP server (unless --no-server)
+    let server_handle = if !args.no_server {
+        let server_multi = Arc::clone(&multi);
+        Some(tokio::spawn(async move {
+            if let Err(e) = server::run_multi(server_multi, tx, &bind, secret.as_deref()).await {
+                tracing::error!("Server error: {e}");
+            }
+        }))
+    } else {
+        info!("HTTP server disabled (--no-server)");
+        None
+    };
+
+    info!(
+        "Multi-repo daemon running ({} repos). Press Ctrl+C to stop.",
+        multi.repos.len()
+    );
+
+    tokio::signal::ctrl_c().await?;
+    info!("Shutdown signal received, stopping...");
+
+    if let Some(h) = server_handle {
+        h.abort();
+    }
+    for h in poller_handles {
+        h.abort();
+    }
+    for h in scheduler_handles {
+        h.abort();
+    }
+    processor_handle.abort();
+
+    info!("Multi-repo daemon stopped.");
     Ok(())
 }

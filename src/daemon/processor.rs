@@ -3,12 +3,11 @@ use tokio::sync::mpsc;
 use tracing::{error, info};
 
 use super::commands;
+use super::memory;
+use super::{DaemonState, MultiDaemonState};
 use crate::cli::{PrArgs, TriageArgs};
 use crate::github::sync as gh_sync;
 use crate::pipelines;
-
-use super::memory;
-use super::DaemonState;
 
 #[derive(Debug, Clone)]
 pub struct WebhookEvent {
@@ -30,6 +29,29 @@ pub async fn run(state: Arc<DaemonState>, mut rx: mpsc::Receiver<WebhookEvent>) 
     }
 
     info!("Event processor stopped");
+}
+
+/// Multi-repo processor: events are tagged with repo slug.
+pub async fn run_multi(
+    multi: Arc<MultiDaemonState>,
+    mut rx: mpsc::Receiver<(String, WebhookEvent)>,
+) {
+    info!("Multi-repo event processor started");
+
+    while let Some((slug, event)) = rx.recv().await {
+        let state = match multi.repos.get(&slug) {
+            Some(s) => Arc::clone(s),
+            None => {
+                error!("No state for repo '{slug}', dropping event id={}", event.id);
+                continue;
+            }
+        };
+        tokio::spawn(async move {
+            process_event(&state, &event).await;
+        });
+    }
+
+    info!("Multi-repo event processor stopped");
 }
 
 async fn process_event(state: &DaemonState, event: &WebhookEvent) {
