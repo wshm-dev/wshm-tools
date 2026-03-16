@@ -42,9 +42,20 @@ pub async fn run(
 
     info!("Auto-fixing issue #{}: {}", issue.number, issue.title);
 
-    // ── Security: trusted author check ──
-    if config.fix.trusted_authors_only {
-        let author = issue.author.as_deref().unwrap_or("unknown");
+    // ── Security: author authorization check ──
+    let author = issue.author.as_deref().unwrap_or("unknown");
+    if !config.fix.allowed_users.is_empty() {
+        // Explicit whitelist takes priority
+        if !config.fix.allowed_users.iter().any(|u| u == author) {
+            info!(
+                "Skipping auto-fix for issue #{}: author '{}' not in allowed_users",
+                issue.number, author
+            );
+            return Ok(());
+        }
+        info!("Author '{author}' is in allowed_users whitelist");
+    } else if config.fix.trusted_authors_only {
+        // Fallback: check collaborator status via GitHub API
         let is_trusted = gh.is_collaborator(author).await.unwrap_or(false);
         if !is_trusted {
             info!(

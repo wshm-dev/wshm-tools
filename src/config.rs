@@ -298,6 +298,12 @@ pub struct FixConfig {
     /// Override AI model for auto-fix (uses [ai].model if not set)
     #[serde(default)]
     pub model: Option<String>,
+
+    /// Explicit whitelist of GitHub usernames allowed to trigger auto-fix.
+    /// If non-empty, only these users can trigger auto-fix (overrides trusted_authors_only).
+    /// If empty, falls back to trusted_authors_only (collaborator check via API).
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
 }
 
 impl Default for FixConfig {
@@ -311,6 +317,7 @@ impl Default for FixConfig {
             draft_pr: true,
             base_branch: default_base_branch(),
             model: None,
+            allowed_users: Vec::new(),
         }
     }
 }
@@ -663,6 +670,7 @@ full_sync_interval_hours = 24
 [fix]
 # model = "claude-sonnet-4-20250514"    # override: capable model for code generation
 # trusted_authors_only = true   # Only auto-fix issues from repo collaborators
+# allowed_users = ["alice", "bob"]  # Explicit whitelist (overrides trusted_authors_only)
 # scan_diff = true               # Scan generated code for suspicious patterns
 # draft_pr = true                # Create PRs as draft (require human review)
 # base_branch = "main"           # Base branch for fix PRs (e.g. "develop")
