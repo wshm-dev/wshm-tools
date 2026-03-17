@@ -2,12 +2,24 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use tracing::info;
 
-/// Clone a repository to a local path.
+/// Clone a repository to a local path using secure credential callbacks.
 pub fn clone_repo(url: &str, path: &Path, token: &str) -> Result<git2::Repository> {
-    let auth_url = url.replace("https://", &format!("https://x-access-token:{token}@"));
-
     info!("Cloning {url} to {}", path.display());
-    let repo = git2::Repository::clone(&auth_url, path)
+
+    let token = token.to_string();
+    let mut cb = git2::RemoteCallbacks::new();
+    cb.credentials(move |_url, _username, _allowed| {
+        git2::Cred::userpass_plaintext("x-access-token", &token)
+    });
+
+    let mut fo = git2::FetchOptions::new();
+    fo.remote_callbacks(cb);
+
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(fo);
+
+    let repo = builder
+        .clone(url, path)
         .with_context(|| format!("Failed to clone {url}"))?;
 
     Ok(repo)

@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -135,21 +134,7 @@ pub fn run(db: &Database, args: &ReportArgs, repo_name: &str) -> Result<()> {
 
 /// Extract linked issue numbers from PR body using "fixes #N", "closes #N", "resolves #N"
 fn extract_issue_links(body: &str) -> Vec<(String, u64)> {
-    static RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-        Regex::new(r"(?i)\b(fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)").unwrap()
-    });
-    let mut seen = std::collections::HashSet::new();
-    RE.captures_iter(body)
-        .filter_map(|cap| {
-            let link_type = cap[1].to_lowercase();
-            let num: u64 = cap[2].parse().ok()?;
-            if seen.insert(num) {
-                Some((link_type, num))
-            } else {
-                None
-            }
-        })
-        .collect()
+    super::extract_linked_issues_with_type(body)
 }
 
 /// Format a datetime string as relative "Xd ago" or absolute date

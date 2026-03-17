@@ -89,7 +89,10 @@ fn load_credentials() -> std::collections::HashMap<String, String> {
 /// Save credentials to .wshm/credentials
 fn save_credentials(creds: &std::collections::HashMap<String, String>) -> Result<()> {
     let path = credentials_path();
-    fs::create_dir_all(path.parent().unwrap())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Credentials path has no parent directory"))?;
+    fs::create_dir_all(parent)?;
 
     let mut content =
         String::from("# wshm credentials — DO NOT COMMIT\n# This file is in .gitignore\n\n");
@@ -99,13 +102,23 @@ fn save_credentials(creds: &std::collections::HashMap<String, String>) -> Result
         content.push_str(&format!("{}={}\n", key, creds[key]));
     }
 
-    fs::write(&path, &content)?;
-
-    // Set restrictive permissions on Unix
+    // Write with restrictive permissions from the start on Unix
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&path)?;
+        f.write_all(content.as_bytes())?;
+    }
+
+    #[cfg(not(unix))]
+    {
+        fs::write(&path, &content)?;
     }
 
     Ok(())

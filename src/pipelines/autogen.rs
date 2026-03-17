@@ -145,6 +145,11 @@ pub async fn run(
 
     // Step 4: Run tests if configured
     if let Some(ref test_cmd) = config.fix.test_command {
+        // Validate: reject dangerous shell patterns (backticks, $(), pipes to curl/wget, etc.)
+        let dangerous_patterns = ["$(", "`", "| curl", "| wget", "; rm", "&& rm", ">/dev/", "| sh", "| bash"];
+        if dangerous_patterns.iter().any(|p| test_cmd.contains(p)) {
+            anyhow::bail!("test_command contains suspicious shell pattern — aborting for safety");
+        }
         info!("Running tests: {test_cmd}");
         let max_attempts = config.fix.test_retries + 1;
         let mut last_error = String::new();
@@ -414,7 +419,8 @@ struct ToolResult {
 fn resolve_claude_dir() -> Option<PathBuf> {
     // Priority 1: CI secret → write to temp dir with restricted permissions
     if let Ok(creds_json) = std::env::var("CLAUDE_CREDENTIALS_JSON") {
-        let tmp_claude_dir = std::env::temp_dir().join("wshm-claude-creds");
+        let unique_id = std::process::id();
+        let tmp_claude_dir = std::env::temp_dir().join(format!("wshm-claude-creds-{unique_id}"));
         if std::fs::create_dir_all(&tmp_claude_dir).is_ok() {
             // Restrict directory permissions to owner only
             #[cfg(unix)]
@@ -629,8 +635,9 @@ async fn run_in_podman(
         .context("Failed to run Podman container. Is Podman installed?")?;
 
     // Cleanup temp credentials if we created them from CI secret
-    if let Ok(_) = std::env::var("CLAUDE_CREDENTIALS_JSON") {
-        let tmp_dir = std::env::temp_dir().join("wshm-claude-creds");
+    if std::env::var("CLAUDE_CREDENTIALS_JSON").is_ok() {
+        let unique_id = std::process::id();
+        let tmp_dir = std::env::temp_dir().join(format!("wshm-claude-creds-{unique_id}"));
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 

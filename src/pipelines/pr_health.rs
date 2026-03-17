@@ -300,12 +300,7 @@ fn jaccard_similarity(
 }
 
 fn extract_linked_issues(body: &str) -> std::collections::HashSet<u64> {
-    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"(?i)\b(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s+#(\d+)").unwrap()
-    });
-    RE.captures_iter(body)
-        .filter_map(|cap| cap[1].parse().ok())
-        .collect()
+    super::extract_linked_issue_numbers(body)
 }
 
 /// Compute a merge-readiness score for a PR, with optional breakdown strings.

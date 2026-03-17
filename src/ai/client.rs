@@ -231,14 +231,6 @@ impl AiClient {
             .unwrap_or_else(|_| reqwest::Client::new())
     }
 
-    pub fn new(config: &Config) -> Result<Self> {
-        let provider = resolve_provider(config, None)?;
-        Ok(Self {
-            http: Self::build_http_client(),
-            provider,
-        })
-    }
-
     /// Create an AiClient with a model override (for per-pipeline model config).
     pub fn with_model(config: &Config, model: &str) -> Result<Self> {
         let provider = resolve_provider(config, Some(model))?;

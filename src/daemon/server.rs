@@ -57,11 +57,23 @@ async fn handle_health(State(state): State<Arc<ServerState>>) -> impl IntoRespon
     }))
 }
 
+/// Maximum webhook payload size (25 MB — GitHub's own limit)
+const MAX_WEBHOOK_SIZE: usize = 25 * 1024 * 1024;
+
 async fn handle_webhook(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Reject oversized payloads
+    if body.len() > MAX_WEBHOOK_SIZE {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(json!({"error": "payload too large"})),
+        )
+            .into_response();
+    }
+
     // Validate HMAC signature if secret is configured
     if let Some(ref secret) = state.secret {
         let sig_header = headers
@@ -111,14 +123,7 @@ async fn handle_webhook(
         .to_string();
 
     // Filter: only process relevant events
-    let should_process = match event_type.as_str() {
-        "issues" => action == "opened",
-        "pull_request" => action == "opened" || action == "synchronize",
-        "issue_comment" => action == "created",
-        _ => false,
-    };
-
-    if !should_process {
+    if !should_process_event(&event_type, &action) {
         info!("Ignoring event: {event_type}.{action}");
         return (
             StatusCode::OK,
@@ -131,7 +136,17 @@ async fn handle_webhook(
     let number = extract_number(&event_type, &payload);
 
     // Store in DB
-    let payload_str = serde_json::to_string(&payload).unwrap_or_default();
+    let payload_str = match serde_json::to_string(&payload) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Failed to serialize webhook payload: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "failed to serialize payload"})),
+            )
+                .into_response();
+        }
+    };
     let event_id =
         match state
             .daemon
@@ -234,6 +249,15 @@ async fn handle_webhook_multi(
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Reject oversized payloads
+    if body.len() > MAX_WEBHOOK_SIZE {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(json!({"error": "payload too large"})),
+        )
+            .into_response();
+    }
+
     // Validate HMAC signature if global secret is configured
     if let Some(ref secret) = state.secret {
         let sig_header = headers
@@ -312,14 +336,7 @@ async fn handle_webhook_multi(
         .to_string();
 
     // Filter relevant events
-    let should_process = match event_type.as_str() {
-        "issues" => action == "opened",
-        "pull_request" => action == "opened" || action == "synchronize",
-        "issue_comment" => action == "created",
-        _ => false,
-    };
-
-    if !should_process {
+    if !should_process_event(&event_type, &action) {
         return (
             StatusCode::OK,
             Json(json!({"status": "ignored", "repo": repo_slug, "event": event_type})),
@@ -330,7 +347,17 @@ async fn handle_webhook_multi(
     let number = extract_number(&event_type, &payload);
 
     // Store in the correct repo's DB
-    let payload_str = serde_json::to_string(&payload).unwrap_or_default();
+    let payload_str = match serde_json::to_string(&payload) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Failed to serialize webhook payload: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "failed to serialize payload"})),
+            )
+                .into_response();
+        }
+    };
     let event_id = match daemon
         .db
         .insert_webhook_event(&event_type, &action, number, &payload_str)
@@ -373,6 +400,15 @@ async fn handle_webhook_multi(
 }
 
 // ── Shared helpers ─────────────────────────────────────────────
+
+fn should_process_event(event_type: &str, action: &str) -> bool {
+    match event_type {
+        "issues" => action == "opened",
+        "pull_request" => action == "opened" || action == "synchronize",
+        "issue_comment" => action == "created",
+        _ => false,
+    }
+}
 
 fn extract_number(event_type: &str, payload: &Value) -> Option<u64> {
     match event_type {
