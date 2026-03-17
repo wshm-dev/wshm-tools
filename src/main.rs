@@ -220,6 +220,15 @@ async fn main() -> Result<()> {
             let slug = config.repo_slug();
             pipelines::context::run(&db, &slug)?;
         }
+        Some(Command::Improve(args)) => {
+            let (config, db, gh) = init_core(&cli)?;
+
+            if !cli.offline {
+                github::sync::incremental_sync(&gh, &db, "issues").await?;
+            }
+
+            pipelines::improve::run(&config, &db, &gh, args, cli.json).await?;
+        }
         Some(Command::Model(model_cmd)) => match model_cmd {
             cli::ModelCommand::Pull { name } => {
                 ai::local::pull_model(name)?;

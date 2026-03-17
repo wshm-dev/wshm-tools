@@ -216,6 +216,20 @@ impl Client {
         Ok(())
     }
 
+    pub async fn create_issue(&self, title: &str, body: &str, labels: &[String]) -> Result<u64> {
+        let body = ensure_wshm_marker(body);
+        let issue = self
+            .octocrab
+            .issues(&self.owner, &self.repo)
+            .create(title)
+            .body(&body)
+            .labels(labels.to_vec())
+            .send()
+            .await
+            .with_context(|| format!("Failed to create issue: {title}"))?;
+        Ok(issue.number)
+    }
+
     pub async fn close_issue(&self, number: u64) -> Result<()> {
         self.octocrab
             .issues(&self.owner, &self.repo)

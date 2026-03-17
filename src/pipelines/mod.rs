@@ -1,5 +1,6 @@
 pub mod autogen;
 pub mod context;
+pub mod improve;
 
 /// Truncate a string to `max` chars, appending "…" if truncated.
 pub fn truncate(s: &str, max: usize) -> String {

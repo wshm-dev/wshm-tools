@@ -304,6 +304,15 @@ pub struct FixConfig {
     /// If empty, falls back to trusted_authors_only (collaborator check via API).
     #[serde(default)]
     pub allowed_users: Vec<String>,
+
+    /// Command to run tests after code generation (e.g. "cargo test", "bun test").
+    /// If set and tests fail, the fix is aborted and a comment is posted on the issue.
+    #[serde(default)]
+    pub test_command: Option<String>,
+
+    /// Maximum retries: if tests fail, re-prompt the AI with the error output (default: 0)
+    #[serde(default)]
+    pub test_retries: u32,
 }
 
 impl Default for FixConfig {
@@ -318,6 +327,8 @@ impl Default for FixConfig {
             base_branch: default_base_branch(),
             model: None,
             allowed_users: Vec::new(),
+            test_command: None,
+            test_retries: 0,
         }
     }
 }

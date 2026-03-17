@@ -68,6 +68,9 @@ pub enum Command {
     /// Export repo context as LLM-ready markdown
     Context,
 
+    /// Analyze codebase and propose improvement issues
+    Improve(ImproveArgs),
+
     /// Authenticate with GitHub and AI provider
     Login(LoginArgs),
 
@@ -270,6 +273,21 @@ pub struct LoginArgs {
     /// Show current authentication status
     #[arg(long)]
     pub status: bool,
+}
+
+#[derive(clap::Args)]
+pub struct ImproveArgs {
+    /// Actually create issues on GitHub (dry-run by default)
+    #[arg(long)]
+    pub apply: bool,
+
+    /// Maximum number of suggestions (default: 5)
+    #[arg(long)]
+    pub limit: Option<u32>,
+
+    /// Automatically trigger auto-fix on created issues
+    #[arg(long)]
+    pub auto_fix: bool,
 }
 
 #[derive(Subcommand)]
