@@ -26,8 +26,8 @@ impl Client {
 
         loop {
             let url = format!(
-                "https://api.github.com/repos/{}/{}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page={page}",
-                self.owner, self.repo
+                "https://api.github.com/repos/{}/{}/pulls?state=closed&sort=updated&direction=desc&per_page={pp}&page={page}",
+                self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
 
             let response = self
@@ -91,8 +91,8 @@ impl Client {
 
         loop {
             let url = format!(
-                "https://api.github.com/repos/{}/{}/pulls?state=open&per_page=100&page={page}",
-                self.owner, self.repo
+                "https://api.github.com/repos/{}/{}/pulls?state=open&per_page={pp}&page={page}",
+                self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
 
             let response = self

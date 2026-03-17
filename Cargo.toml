@@ -1,6 +1,6 @@
 [package]
 name = "wshm"
-version = "0.11.2"
+version = "0.11.3"
 edition = "2021"
 description = "AI-powered GitHub agent for OSS maintainers"
 license = "LicenseRef-WSHM-Source-Available"
@@ -71,6 +71,7 @@ tar = "0.4"
 zip = "2"
 async-trait = "0.1"
 is-terminal = "0.4"
+zeroize = "1"
 
 # Optional: Export - Cloud Storage
 aws-sdk-s3 = { version = "1", optional = true }

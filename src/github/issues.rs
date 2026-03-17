@@ -26,8 +26,8 @@ impl Client {
 
         loop {
             let mut url = format!(
-                "https://api.github.com/repos/{}/{}/issues?state={state}&per_page=100&page={page}",
-                self.owner, self.repo
+                "https://api.github.com/repos/{}/{}/issues?state={state}&per_page={pp}&page={page}",
+                self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
             if let Some(since) = since {
                 url.push_str(&format!("&since={since}"));
@@ -129,8 +129,8 @@ impl Client {
 
         loop {
             let url = format!(
-                "https://api.github.com/repos/{}/{}/issues/{number}/comments?per_page=100&page={page}",
-                self.owner, self.repo
+                "https://api.github.com/repos/{}/{}/issues/{number}/comments?per_page={pp}&page={page}",
+                self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
 
             let response = self

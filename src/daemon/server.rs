@@ -343,7 +343,7 @@ fn validate_webhook(
         }
     };
 
-    // Parse payload
+    // Parse payload (serde_json enforces a default recursion limit of 128 levels)
     let payload: Value = match serde_json::from_slice(body) {
         Ok(v) => v,
         Err(e) => {

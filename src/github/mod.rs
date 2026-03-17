@@ -6,6 +6,9 @@ pub mod sync;
 
 pub use client::Client;
 
+/// Maximum items per page for GitHub API pagination.
+pub const GITHUB_PER_PAGE: u32 = 100;
+
 /// Extract label names from a GitHub API JSON object.
 pub fn extract_labels(json: &serde_json::Value) -> Vec<String> {
     json.get("labels")

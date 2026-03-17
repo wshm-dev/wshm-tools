@@ -1,12 +1,13 @@
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use tracing::debug;
+use zeroize::Zeroizing;
 
 use crate::config::Config;
 
 struct ProviderConfig {
     api_url: String,
-    api_key: String,
+    api_key: Zeroizing<String>,
     model: String,
     kind: ProviderKind,
     is_oauth: bool,
@@ -40,7 +41,7 @@ fn resolve_provider(config: &Config, model_override: Option<&str>) -> Result<Pro
                 ))?;
             Ok(ProviderConfig {
                 api_url: base_url.unwrap_or_else(|| "https://api.anthropic.com/v1/messages".into()),
-                api_key: key,
+                api_key: Zeroizing::new(key),
                 model,
                 kind: ProviderKind::Anthropic,
                 is_oauth,
@@ -164,7 +165,7 @@ fn resolve_provider(config: &Config, model_override: Option<&str>) -> Result<Pro
         "ollama" => Ok(ProviderConfig {
             api_url: base_url
                 .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".into()),
-            api_key: std::env::var("OLLAMA_API_KEY").unwrap_or_default(),
+            api_key: Zeroizing::new(std::env::var("OLLAMA_API_KEY").unwrap_or_default()),
             model,
             kind: ProviderKind::OpenAiCompat,
             is_oauth: false,
@@ -191,7 +192,7 @@ fn resolve_provider(config: &Config, model_override: Option<&str>) -> Result<Pro
         // ── Custom OpenAI-compatible endpoint ─────────────────────
         "custom" => Ok(ProviderConfig {
             api_url: base_url.context("Set base_url in [ai] config for custom provider")?,
-            api_key: env_key(&["WSHM_AI_API_KEY", "AI_API_KEY"]).unwrap_or_default(),
+            api_key: env_key(&["WSHM_AI_API_KEY", "AI_API_KEY"]).unwrap_or_else(|_| Zeroizing::new(String::new())),
             model,
             kind: ProviderKind::OpenAiCompat,
             is_oauth: false,
@@ -209,12 +210,12 @@ fn resolve_provider(config: &Config, model_override: Option<&str>) -> Result<Pro
     }
 }
 
-/// Try multiple env var names, return the first one found.
-fn env_key(names: &[&str]) -> Result<String> {
+/// Try multiple env var names, return the first one found (zeroized on drop).
+fn env_key(names: &[&str]) -> Result<Zeroizing<String>> {
     for name in names {
         if let Ok(val) = std::env::var(name) {
             if !val.is_empty() {
-                return Ok(val);
+                return Ok(Zeroizing::new(val));
             }
         }
     }
@@ -222,11 +223,16 @@ fn env_key(names: &[&str]) -> Result<String> {
     anyhow::bail!("Set {vars} environment variable")
 }
 
+/// AI API request timeout (LLM calls can be slow for large prompts).
+const AI_REQUEST_TIMEOUT_SECS: u64 = 120;
+/// TCP connection timeout for AI API calls.
+const AI_CONNECT_TIMEOUT_SECS: u64 = 10;
+
 impl AiClient {
     fn build_http_client() -> reqwest::Client {
         reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
-            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(AI_REQUEST_TIMEOUT_SECS))
+            .connect_timeout(std::time::Duration::from_secs(AI_CONNECT_TIMEOUT_SECS))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     }
@@ -298,7 +304,7 @@ impl AiClient {
             .post(&self.provider.api_url)
             .header("anthropic-version", "2023-06-01")
             .header("content-type", "application/json")
-            .header("x-api-key", &self.provider.api_key);
+            .header("x-api-key", self.provider.api_key.as_str());
 
         let response = req
             .json(&body)
@@ -340,9 +346,9 @@ impl AiClient {
 
         // Azure uses api-key header, others use Bearer token
         if self.provider.api_url.contains("openai.azure.com") {
-            req = req.header("api-key", &self.provider.api_key);
+            req = req.header("api-key", self.provider.api_key.as_str());
         } else if !self.provider.api_key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {}", self.provider.api_key));
+            req = req.header("Authorization", format!("Bearer {}", self.provider.api_key.as_str()));
         }
 
         let response = req
@@ -385,7 +391,7 @@ impl AiClient {
             .http
             .post(&self.provider.api_url)
             .header("content-type", "application/json")
-            .header("x-goog-api-key", &self.provider.api_key)
+            .header("x-goog-api-key", self.provider.api_key.as_str())
             .json(&body)
             .send()
             .await

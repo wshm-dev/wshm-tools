@@ -13,7 +13,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::cli::DaemonArgs;
 use crate::config::{Config, GlobalConfig};
@@ -45,7 +45,12 @@ pub async fn run(config: Config, args: DaemonArgs) -> Result<()> {
         .secret
         .clone()
         .or_else(|| std::env::var("WSHM_WEBHOOK_SECRET").ok())
-        .or_else(|| config.daemon.webhook_secret.clone());
+        .or_else(|| {
+            if config.daemon.webhook_secret.is_some() {
+                warn!("webhook_secret in config.toml is insecure — use WSHM_WEBHOOK_SECRET env var or .wshm/credentials instead");
+            }
+            config.daemon.webhook_secret.clone()
+        });
 
     let db = Arc::new(Database::open(&config)?);
     let gh = Arc::new(GhClient::new(&config)?);

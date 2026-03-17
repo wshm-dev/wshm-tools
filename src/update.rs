@@ -47,7 +47,8 @@ async fn fetch_latest_release(
     let body = resp.text().await?;
 
     if !status.is_success() {
-        anyhow::bail!("GitHub API error ({status}): {body}");
+        let safe_body = if body.len() > 200 { &body[..200] } else { &body };
+        anyhow::bail!("GitHub API error ({status}): {safe_body}");
     }
 
     let json: serde_json::Value = serde_json::from_str(&body)?;
