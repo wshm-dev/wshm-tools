@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 use crate::cli::FixArgs;
@@ -87,9 +87,10 @@ pub async fn run(
     }
 
     // Step 1: Start from a clean base branch, then create fix branch
+    let repo_dir = config.wshm_dir.parent().unwrap_or(Path::new("."));
     let base_branch = &config.fix.base_branch;
-    ensure_clean_base(base_branch)?;
-    create_branch(&branch)?;
+    ensure_clean_base(repo_dir, base_branch)?;
+    create_branch(repo_dir, &branch)?;
 
     // Step 2: Run the AI tool
     println!("Running {}...", tool.name());
@@ -97,21 +98,21 @@ pub async fn run(
 
     if !result.success {
         println!("AI tool failed: {}", result.output);
-        cleanup_branch(base_branch, &branch)?;
+        cleanup_branch(repo_dir, base_branch, &branch)?;
         return Ok(());
     }
 
     // Step 3: Check if any files were changed
-    let has_changes = check_changes()?;
+    let has_changes = check_changes(repo_dir)?;
     if !has_changes {
         println!("No changes generated. The AI tool did not modify any files.");
-        cleanup_branch(base_branch, &branch)?;
+        cleanup_branch(repo_dir, base_branch, &branch)?;
         return Ok(());
     }
 
     // ── Security: diff scan ──
     if config.fix.scan_diff {
-        let violations = scan_diff_for_threats()?;
+        let violations = scan_diff_for_threats(repo_dir)?;
         if !violations.is_empty() {
             tracing::warn!(
                 "Diff scan found suspicious patterns in auto-fix for issue #{}:",
@@ -121,7 +122,7 @@ pub async fn run(
                 tracing::warn!("  ⚠ {v}");
             }
             println!("Aborting auto-fix: suspicious patterns detected in generated code.");
-            cleanup_branch(base_branch, &branch)?;
+            cleanup_branch(repo_dir, base_branch, &branch)?;
 
             // Post warning on the issue
             let warning = format!(
@@ -216,13 +217,13 @@ pub async fn run(
             if let Err(e) = gh.comment_issue(issue.number, &comment).await {
                 tracing::warn!("Failed to post test failure comment on issue #{}: {e}", issue.number);
             }
-            cleanup_branch(base_branch, &branch)?;
+            cleanup_branch(repo_dir, base_branch, &branch)?;
             return Ok(());
         }
     }
 
     // Step 5: Commit and push
-    commit_and_push(&branch, issue.number)?;
+    commit_and_push(repo_dir, &branch, issue.number)?;
 
     // Step 6: Open PR (as draft by default for mandatory review)
     let pr_body = format!(
@@ -346,8 +347,9 @@ const SUSPICIOUS_PATTERNS: &[(&str, &str)] = &[
 ];
 
 /// Scan unstaged diff for suspicious patterns. Returns list of violations.
-fn scan_diff_for_threats() -> Result<Vec<String>> {
+fn scan_diff_for_threats(repo_dir: &Path) -> Result<Vec<String>> {
     let output = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["diff", "--unified=0"])
         .output()
         .context("Failed to run git diff")?;
@@ -665,9 +667,10 @@ async fn run_in_podman(
 
 /// Ensure we start from a clean, up-to-date base branch.
 /// Discards any local modifications so the fix branch starts pristine.
-fn ensure_clean_base(base_branch: &str) -> Result<()> {
+fn ensure_clean_base(repo_dir: &Path, base_branch: &str) -> Result<()> {
     // Checkout the base branch
     let status = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["checkout", base_branch])
         .status()
         .context("Failed to checkout base branch")?;
@@ -677,12 +680,14 @@ fn ensure_clean_base(base_branch: &str) -> Result<()> {
 
     // Discard any local modifications
     std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["reset", "--hard", &format!("origin/{base_branch}")])
         .status()
         .context("Failed to reset to origin")?;
 
     // Pull latest (best-effort — may fail if no upstream or offline)
     if let Err(e) = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["pull", "--ff-only"])
         .status()
     {
@@ -692,14 +697,16 @@ fn ensure_clean_base(base_branch: &str) -> Result<()> {
     Ok(())
 }
 
-fn create_branch(branch: &str) -> Result<()> {
+fn create_branch(repo_dir: &Path, branch: &str) -> Result<()> {
     // Delete local branch if it exists (stale from previous attempt)
     std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["branch", "-D", branch])
         .status()
         .ok();
 
     let status = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["checkout", "-b", branch])
         .status()
         .context("Failed to create git branch")?;
@@ -710,8 +717,9 @@ fn create_branch(branch: &str) -> Result<()> {
     Ok(())
 }
 
-fn check_changes() -> Result<bool> {
+fn check_changes(repo_dir: &Path) -> Result<bool> {
     let output = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["status", "--porcelain"])
         .output()
         .context("Failed to check git status")?;
@@ -730,9 +738,10 @@ const EXCLUDED_PATHS: &[&str] = &[
     ".fastembed_cache/",
 ];
 
-fn commit_and_push(branch: &str, issue_number: u64) -> Result<()> {
+fn commit_and_push(repo_dir: &Path, branch: &str, issue_number: u64) -> Result<()> {
     // Add all changes including new files (needed for auto-fix that creates files)
     let status = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["add", "-A"])
         .status()
         .context("Failed to git add")?;
@@ -743,6 +752,7 @@ fn commit_and_push(branch: &str, issue_number: u64) -> Result<()> {
     // Unstage any sensitive/excluded paths
     for pattern in EXCLUDED_PATHS {
         std::process::Command::new("git")
+        .current_dir(repo_dir)
             .args(["reset", "HEAD", "--", pattern])
             .output()
             .ok();
@@ -750,6 +760,7 @@ fn commit_and_push(branch: &str, issue_number: u64) -> Result<()> {
 
     let msg = format!("fix: auto-fix for issue #{issue_number} [wshm]");
     let status = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["commit", "-m", &msg])
         .status()
         .context("Failed to git commit")?;
@@ -758,6 +769,7 @@ fn commit_and_push(branch: &str, issue_number: u64) -> Result<()> {
     }
 
     let status = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["push", "-u", "origin", branch])
         .status()
         .context("Failed to git push")?;
@@ -768,14 +780,16 @@ fn commit_and_push(branch: &str, issue_number: u64) -> Result<()> {
     Ok(())
 }
 
-fn cleanup_branch(base_branch: &str, branch: &str) -> Result<()> {
+fn cleanup_branch(repo_dir: &Path, base_branch: &str, branch: &str) -> Result<()> {
     if let Err(e) = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["checkout", base_branch])
         .status()
     {
         tracing::warn!("Failed to checkout {base_branch} during cleanup: {e}");
     }
     if let Err(e) = std::process::Command::new("git")
+        .current_dir(repo_dir)
         .args(["branch", "-D", branch])
         .status()
     {
