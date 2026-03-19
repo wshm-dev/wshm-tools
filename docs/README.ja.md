@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/hero.svg" alt="wshm" width="100%"/>
+  <img src="../assets/wizard.png" alt="wshm" width="600"/>
 </p>
 
 <p align="center">

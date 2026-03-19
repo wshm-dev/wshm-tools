@@ -1,6 +1,9 @@
 <p align="center">
-  <img src="assets/hero.svg" alt="wshm — Your repo's wish is my command" width="100%"/>
+  <img src="assets/wizard.png" alt="wshm — Your repo's wish is my command" width="600"/>
 </p>
+
+<h1 align="center">wshm</h1>
+<p align="center"><em>Your repo's wish is my command.</em></p>
 
 <p align="center">
   <strong>AI-powered GitHub agent for repository maintenance.</strong><br>
