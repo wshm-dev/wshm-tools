@@ -498,7 +498,7 @@ impl Default for BrandingConfig {
         Self {
             name: default_bot_name(),
             url: default_bot_url(),
-            avatar_url: None,
+            avatar_url: Some("https://raw.githubusercontent.com/pszymkowiak/wshm-tools/main/assets/wizard-icon.png".to_string()),
             tagline: None,
             command_prefix: default_command_prefix(),
             footer_template: None,
@@ -517,7 +517,7 @@ impl BrandingConfig {
     /// Build the footer line for a comment. `action` is e.g. "Triaged", "Analyzed", "Reviewed".
     pub fn footer(&self, action: &str) -> String {
         let tmpl = self.footer_template.as_deref()
-            .unwrap_or("🤖 *{action} automatically by [{name}]({url})* · This is an automated analysis, not a human review.");
+            .unwrap_or("*{action} automatically by [{name}]({url})* · This is an automated analysis, not a human review.");
 
         let result = tmpl
             .replace("{action}", action)
@@ -535,10 +535,10 @@ impl BrandingConfig {
                 format!("<img src=\"{avatar}\" width=\"24\" height=\"24\" align=\"absmiddle\">")
             } else {
                 tracing::warn!("Ignoring invalid avatar_url (must be HTTPS, no special chars)");
-                "🧞".to_string()
+                "[w]".to_string()
             }
         } else {
-            "🧞".to_string()
+            "[w]".to_string()
         };
 
         let tagline = self.tagline.as_deref().unwrap_or("Automated triage by AI");
