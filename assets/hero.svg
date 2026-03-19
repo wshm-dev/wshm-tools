@@ -33,8 +33,13 @@
     <text x="80" y="300">  ✓ sync ✓ triage ✓ analyze ✓ queue ✓ conflicts</text>
   </g>
 
-  <!-- Genie emoji -->
-  <text x="600" y="160" font-size="80" text-anchor="middle" dominant-baseline="middle">🧞</text>
+  <!-- Lamp icon -->
+  <g transform="translate(575, 110)" fill="none" stroke="url(#glow)" stroke-width="2" opacity="0.7">
+    <path d="M25 0 C25 0 50 20 50 35 C50 50 35 55 25 55 C15 55 0 50 0 35 C0 20 25 0 25 0Z"/>
+    <ellipse cx="25" cy="55" rx="18" ry="5"/>
+    <line x1="25" y1="0" x2="25" y2="-15" stroke-dasharray="3,3"/>
+    <circle cx="25" cy="-20" r="3" fill="url(#glow)" stroke="none" opacity="0.5"/>
+  </g>
 
   <!-- Title -->
   <text x="600" y="230" font-family="system-ui, -apple-system, sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">wshm</text>

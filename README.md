@@ -16,31 +16,31 @@
 </p>
 
 <p align="center">
-  <a href="#-english">English</a> •
-  <a href="#-français">Français</a> •
-  <a href="#-español">Español</a> •
-  <a href="#-deutsch">Deutsch</a> •
-  <a href="#-日本語">日本語</a> •
-  <a href="#-中文">中文</a> •
-  <a href="#-한국어">한국어</a> •
-  <a href="#-português">Português</a>
+  English •
+  <a href="docs/README.fr.md">Français</a> •
+  <a href="docs/README.es.md">Español</a> •
+  <a href="docs/README.de.md">Deutsch</a> •
+  <a href="docs/README.ja.md">日本語</a> •
+  <a href="docs/README.zh.md">中文</a> •
+  <a href="docs/README.ko.md">한국어</a> •
+  <a href="docs/README.pt.md">Português</a>
 </p>
 
 ---
 
 ## Features
 
-- **🔍 Issue Triage** — Automatically classify, label, and prioritize new issues using AI
-- **📊 PR Analysis** — Summarize PRs, assess risk, generate review checklists
-- **🔧 Auto-Fix** — Generate and open draft PRs for simple bugs (confidence-gated)
-- **📋 Merge Queue** — Score and rank PRs by readiness, auto-merge when above threshold
-- **🔀 Conflict Resolution** — Detect and auto-resolve merge conflicts (never force-pushes)
-- **📝 Inline Review** — AI-powered line-by-line code review comments
-- **👥 Auto-Assign** — Weighted random assignment of maintainers to issues and PRs
-- **🏷️ Labels Blacklist** — Prevent specific labels from ever being applied
-- **🔄 Periodic Retriage** — Re-evaluate stale triage results on a schedule
-- **📈 Dashboard & Reports** — HTML dashboards and markdown/PDF reports
-- **🎨 Fully Customizable** — Templates for every comment, branding, and behavior
+- **Issue Triage** — Automatically classify, label, and prioritize new issues using AI
+- **PR Analysis** — Summarize PRs, assess risk, generate review checklists
+- **Auto-Fix** — Generate and open draft PRs for simple bugs (confidence-gated)
+- **Merge Queue** — Score and rank PRs by readiness, auto-merge when above threshold
+- **Conflict Resolution** — Detect and auto-resolve merge conflicts (never force-pushes)
+- **Inline Review** — AI-powered line-by-line code review comments
+- **Auto-Assign** — Weighted random assignment of maintainers to issues and PRs
+- **Labels Blacklist** — Prevent specific labels from ever being applied
+- **Periodic Retriage** — Re-evaluate stale triage results on a schedule
+- **Dashboard & Reports** — HTML dashboards and markdown/PDF reports
+- **Fully Customizable** — Templates for every comment, branding, and behavior
 
 ## How it works
 
@@ -86,8 +86,8 @@ New PR → Fetch diff + CI status → AI Analysis → Summary + Risk + Checklist
 
 ### Pipeline 3 — Merge Queue
 ```
-Open PRs → Score (CI ✓, reviews, age, risk, conflicts) → Ranked list
-                                                           └── Auto-merge if above threshold
+Open PRs → Score (CI, reviews, age, risk, conflicts) → Ranked list
+                                                         └── Auto-merge if above threshold
 ```
 
 ### Pipeline 4 — Conflict Resolution
@@ -167,7 +167,7 @@ url = "https://my-project.dev"
 | Cohere | `COHERE_API_KEY` | — |
 | OpenRouter | `OPENROUTER_API_KEY` | — |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY` | — |
-| Ollama | — | ✅ |
+| Ollama | — | yes |
 
 ## CLI
 
@@ -212,147 +212,13 @@ wshm daemon                    # persistent daemon with webhooks/polling
 >
 > If you're interested in trying wshm on your repositories, reach out:
 >
-> 📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)**
+> **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)**
 >
 > We're looking for early adopters to shape the product. Open-source maintainers and small teams welcome.
 
 ---
 
-## 🇫🇷 Français
-
-### wshm — Agent IA pour la maintenance de repos GitHub
-
-wshm est un outil CLI + GitHub Action qui agit comme un agent autonome de maintenance de repos.
-
-**Fonctionnalités :**
-- 🔍 **Triage automatique** des issues (classification, labelling, priorité)
-- 📊 **Analyse de PRs** (résumé, risque, checklist de review)
-- 🔧 **Auto-fix** pour les bugs simples (PR draft avec seuil de confiance)
-- 📋 **Merge queue** avec scoring et auto-merge
-- 🔀 **Résolution de conflits** par IA (jamais de force-push)
-- 👥 **Auto-assignation** pondérée des maintainers
-
-Un seul binaire. Vos clés API. Vos données. Zéro infrastructure.
-
-📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)** — Accès anticipé disponible.
-
----
-
-## 🇪🇸 Español
-
-### wshm — Agente IA para el mantenimiento de repos GitHub
-
-wshm es una herramienta CLI + GitHub Action que actúa como agente autónomo de mantenimiento.
-
-**Características:**
-- 🔍 Triaje automático de issues
-- 📊 Análisis de PRs con evaluación de riesgo
-- 🔧 Auto-fix para bugs simples
-- 📋 Cola de merge con scoring
-- 🔀 Resolución de conflictos por IA
-
-Un solo binario. Tus claves API. Tus datos.
-
-📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)** — Acceso anticipado disponible.
-
----
-
-## 🇩🇪 Deutsch
-
-### wshm — KI-Agent für GitHub-Repository-Wartung
-
-wshm ist ein CLI-Tool + GitHub Action, das als autonomer Agent für die Repository-Wartung fungiert.
-
-**Funktionen:**
-- 🔍 Automatische Issue-Triage
-- 📊 PR-Analyse mit Risikobewertung
-- 🔧 Auto-Fix für einfache Bugs
-- 📋 Merge-Queue mit Scoring
-- 🔀 KI-gestützte Konfliktlösung
-
-Eine einzige Binary. Ihre API-Schlüssel. Ihre Daten.
-
-📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)** — Early Access verfügbar.
-
----
-
-## 🇯🇵 日本語
-
-### wshm — GitHubリポジトリ管理のためのAIエージェント
-
-wshmは、リポジトリの自律的なメンテナンスエージェントとして機能するCLIツール + GitHub Actionです。
-
-**機能：**
-- 🔍 Issueの自動トリアージ（分類、ラベリング、優先度設定）
-- 📊 PRの分析（要約、リスク評価、レビューチェックリスト）
-- 🔧 シンプルなバグの自動修正
-- 📋 スコアリング付きマージキュー
-- 🔀 AIによるコンフリクト解決
-
-単一バイナリ。あなたのAPIキー。あなたのデータ。
-
-📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)** — アーリーアクセス受付中
-
----
-
-## 🇨🇳 中文
-
-### wshm — GitHub仓库维护AI代理
-
-wshm是一个CLI工具 + GitHub Action，作为自主仓库维护代理运行。
-
-**功能：**
-- 🔍 Issue自动分类（分类、标签、优先级）
-- 📊 PR分析（摘要、风险评估、审查清单）
-- 🔧 简单Bug自动修复
-- 📋 带评分的合并队列
-- 🔀 AI冲突解决
-
-单一二进制文件。您的API密钥。您的数据。零基础设施。
-
-📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)** — 早期访问开放中
-
----
-
-## 🇰🇷 한국어
-
-### wshm — GitHub 저장소 관리를 위한 AI 에이전트
-
-wshm은 자율적인 저장소 유지보수 에이전트로 작동하는 CLI 도구 + GitHub Action입니다.
-
-**기능：**
-- 🔍 이슈 자동 분류 (분류, 라벨링, 우선순위)
-- 📊 PR 분석 (요약, 위험 평가, 리뷰 체크리스트)
-- 🔧 간단한 버그 자동 수정
-- 📋 스코어링 기반 머지 큐
-- 🔀 AI 충돌 해결
-
-단일 바이너리. 당신의 API 키. 당신의 데이터.
-
-📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)** — 얼리 액세스 가능
-
----
-
-## 🇧🇷 Português
-
-### wshm — Agente IA para manutenção de repos GitHub
-
-wshm é uma ferramenta CLI + GitHub Action que atua como agente autônomo de manutenção de repositórios.
-
-**Funcionalidades:**
-- 🔍 Triagem automática de issues
-- 📊 Análise de PRs com avaliação de risco
-- 🔧 Auto-fix para bugs simples
-- 📋 Fila de merge com scoring
-- 🔀 Resolução de conflitos por IA
-
-Um único binário. Suas chaves API. Seus dados.
-
-📧 **[contact@rtk-ai.app](mailto:contact@rtk-ai.app)** — Acesso antecipado disponível.
-
----
-
 <p align="center">
   <sub>Built with Rust. Zero infra. One binary.</sub><br>
-  <sub>© 2026 <a href="https://rtk-ai.app">rtk-ai</a></sub>
+  <sub>&copy; 2026 <a href="https://rtk-ai.app">rtk-ai</a></sub>
 </p>
