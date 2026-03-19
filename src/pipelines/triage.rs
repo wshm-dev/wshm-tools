@@ -271,61 +271,100 @@ fn will_auto_fix(c: &IssueClassification, config: &Config) -> bool {
         && c.confidence >= config.triage.auto_fix_confidence
 }
 
-fn format_triage_comment(c: &IssueClassification, config: &Config) -> String {
-    let mut comment = config.branding.header();
-
-    let priority_emoji = match c.priority.as_deref() {
-        Some("critical") => "🔴",
-        Some("high") => "🟠",
-        Some("medium") => "🟡",
-        Some("low") => "🟢",
-        _ => "⚪",
-    };
-
-    let category_emoji = match c.category.as_str() {
+fn category_emoji(cat: &str) -> &'static str {
+    match cat {
         "bug" => "🐛",
         "feature" => "✨",
         "duplicate" => "♻️",
         "wontfix" => "🚫",
         "needs-info" => "❓",
         _ => "📋",
+    }
+}
+
+fn priority_emoji(pri: Option<&str>) -> &'static str {
+    match pri {
+        Some("critical") => "🔴",
+        Some("high") => "🟠",
+        Some("medium") => "🟡",
+        Some("low") => "🟢",
+        _ => "⚪",
+    }
+}
+
+fn format_triage_comment(c: &IssueClassification, config: &Config) -> String {
+    let cat_emoji = category_emoji(&c.category);
+    let pri_emoji = priority_emoji(c.priority.as_deref());
+    let priority = c.priority.as_deref().unwrap_or("unset");
+    let confidence = format!("{:.0}", c.confidence * 100.0);
+    let header = config.branding.header();
+    let footer = config.branding.footer("Triaged");
+
+    let relevant_files = if c.relevant_files.is_empty() {
+        String::new()
+    } else {
+        let files: Vec<String> = c.relevant_files.iter().map(|f| format!("- `{f}`")).collect();
+        format!(
+            "<details>\n<summary>📁 Relevant files</summary>\n\n{}\n\n</details>",
+            files.join("\n")
+        )
     };
+
+    let duplicate_of = c
+        .is_duplicate_of
+        .as_ref()
+        .map(|d| format!("> ♻️ Possible duplicate of #{d}"))
+        .unwrap_or_default();
+
+    // Use custom template if provided
+    if let Some(ref tmpl) = config.branding.triage_template {
+        return tmpl
+            .replace("{category}", &c.category)
+            .replace("{priority}", priority)
+            .replace("{confidence}", &confidence)
+            .replace("{summary}", &c.summary)
+            .replace("{category_emoji}", cat_emoji)
+            .replace("{priority_emoji}", pri_emoji)
+            .replace("{relevant_files}", &relevant_files)
+            .replace("{duplicate_of}", &duplicate_of)
+            .replace("{header}", &header)
+            .replace("{footer}", &footer);
+    }
+
+    // Default template
+    let mut comment = header;
 
     comment.push_str(&format!(
         "## 🔍 Automated Triage\n\n\
          | | |\n|---|---|\n\
-         | {category_emoji} **Category** | `{}` |\n\
-         | {priority_emoji} **Priority** | `{}` |\n\
-         | 🎯 **Confidence** | {:.0}% |\n\n\
+         | {cat_emoji} **Category** | `{}` |\n\
+         | {pri_emoji} **Priority** | `{priority}` |\n\
+         | 🎯 **Confidence** | {confidence}% |\n\n\
          ### Summary\n\n\
          {}\n",
-        c.category,
-        c.priority.as_deref().unwrap_or("unset"),
-        c.confidence * 100.0,
-        c.summary,
+        c.category, c.summary,
     ));
 
     if c.is_simple_fix {
         if will_auto_fix(c, config) {
             comment.push_str("\n> 🔧 This looks like a **trivial fix** — attempting auto-fix now. A draft PR will be opened for review.\n");
         } else {
-            comment.push_str("\n> 💡 This looks like a **simple fix** that could be auto-resolved. Use `/wshm fix` to attempt it.\n");
+            comment.push_str(&format!(
+                "\n> 💡 This looks like a **simple fix** that could be auto-resolved. Use `{} fix` to attempt it.\n",
+                config.branding.command_prefix
+            ));
         }
     }
 
-    if let Some(ref dup) = c.is_duplicate_of {
-        comment.push_str(&format!("\n> ♻️ Possible duplicate of #{dup}\n"));
+    if !duplicate_of.is_empty() {
+        comment.push_str(&format!("\n{duplicate_of}\n"));
     }
 
-    if !c.relevant_files.is_empty() {
-        comment.push_str("\n<details>\n<summary>📁 Relevant files</summary>\n\n");
-        for f in &c.relevant_files {
-            comment.push_str(&format!("- `{f}`\n"));
-        }
-        comment.push_str("\n</details>\n");
+    if !relevant_files.is_empty() {
+        comment.push_str(&format!("\n{relevant_files}\n"));
     }
 
-    comment.push_str(&format!("\n{}", config.branding.footer("Triaged")));
+    comment.push_str(&format!("\n{footer}"));
     comment
 }
 

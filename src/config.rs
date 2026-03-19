@@ -457,7 +457,7 @@ pub struct BrandingConfig {
     #[serde(default = "default_bot_name")]
     pub name: String,
 
-    /// Bot URL linked in footers (default: "https://github.com/pszymkowiak/wshm")
+    /// Bot URL linked in footers (default: "https://wshm.dev")
     #[serde(default = "default_bot_url")]
     pub url: String,
 
@@ -477,6 +477,20 @@ pub struct BrandingConfig {
     /// Default: "*{action} by [{name}]({url})*"
     #[serde(default)]
     pub footer_template: Option<String>,
+
+    /// Custom triage comment template (markdown/HTML).
+    /// Placeholders: {category}, {priority}, {confidence}, {summary},
+    /// {category_emoji}, {priority_emoji}, {relevant_files}, {duplicate_of},
+    /// {header}, {footer}
+    #[serde(default)]
+    pub triage_template: Option<String>,
+
+    /// Custom PR analysis comment template (markdown/HTML).
+    /// Placeholders: {type}, {risk}, {summary}, {type_emoji}, {risk_emoji},
+    /// {tests_present}, {breaking_change}, {docs_updated}, {linked_issues},
+    /// {header}, {footer}
+    #[serde(default)]
+    pub pr_template: Option<String>,
 }
 
 impl Default for BrandingConfig {
@@ -488,6 +502,8 @@ impl Default for BrandingConfig {
             tagline: None,
             command_prefix: default_command_prefix(),
             footer_template: None,
+            triage_template: None,
+            pr_template: None,
         }
     }
 }
@@ -535,7 +551,7 @@ fn default_bot_name() -> String {
     "wshm".to_string()
 }
 fn default_bot_url() -> String {
-    "https://github.com/pszymkowiak/wshm".to_string()
+    "https://wshm.dev".to_string()
 }
 fn default_command_prefix() -> String {
     "/wshm".to_string()
@@ -910,6 +926,27 @@ full_sync_interval_hours = 24
 # tagline = "AI-powered repo assistant"          # Optional tagline
 # command_prefix = "/wshm"             # Slash command prefix
 # footer_template = "*{action} by [{name}]({url})*"  # Custom footer
+#
+# Custom comment templates (markdown/HTML). Omit to use defaults.
+# Triage placeholders: {header}, {footer}, {category}, {priority}, {confidence},
+#   {summary}, {category_emoji}, {priority_emoji}, {relevant_files}, {duplicate_of}
+# triage_template = """
+# {header}
+# ## Triage Result
+# **{category_emoji} {category}** — {summary}
+# {footer}
+# """
+#
+# PR analysis placeholders: {header}, {footer}, {type}, {risk}, {summary},
+#   {type_emoji}, {risk_emoji}, {tests_present}, {breaking_change},
+#   {docs_updated}, {linked_issues}
+# pr_template = """
+# {header}
+# ## PR Review
+# **{type_emoji} {type}** | Risk: {risk_emoji} {risk}
+# {summary}
+# {footer}
+# """
 
 # [vault]
 # provider = "hashicorp"               # "hashicorp" | "aws" | "azure" | "gcp"

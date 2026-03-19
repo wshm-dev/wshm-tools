@@ -188,8 +188,6 @@ async fn analyze_pr(
 }
 
 fn format_analysis_comment(a: &PrAnalysis, config: &Config) -> String {
-    let mut comment = config.branding.header();
-
     let risk_emoji = match a.risk_level.as_str() {
         "high" => "🔴",
         "medium" => "🟡",
@@ -206,6 +204,35 @@ fn format_analysis_comment(a: &PrAnalysis, config: &Config) -> String {
         _ => "📋",
     };
 
+    let check = |b: bool| if b { "x" } else { " " };
+    let header = config.branding.header();
+    let footer = config.branding.footer("Analyzed");
+    let linked_issues = if a.linked_issues.is_empty() {
+        String::new()
+    } else {
+        let links: Vec<String> = a.linked_issues.iter().map(|n| format!("#{n}")).collect();
+        format!("**Linked issues:** {}", links.join(", "))
+    };
+
+    // Use custom template if provided
+    if let Some(ref tmpl) = config.branding.pr_template {
+        return tmpl
+            .replace("{type}", &a.pr_type)
+            .replace("{risk}", &a.risk_level)
+            .replace("{summary}", &a.summary)
+            .replace("{type_emoji}", type_emoji)
+            .replace("{risk_emoji}", risk_emoji)
+            .replace("{tests_present}", check(a.review_checklist.tests_present))
+            .replace("{breaking_change}", check(a.review_checklist.breaking_change))
+            .replace("{docs_updated}", check(a.review_checklist.docs_updated))
+            .replace("{linked_issues}", &linked_issues)
+            .replace("{header}", &header)
+            .replace("{footer}", &footer);
+    }
+
+    // Default template
+    let mut comment = header;
+
     comment.push_str(&format!(
         "## 📊 Automated PR Analysis\n\n\
          | | |\n|---|---|\n\
@@ -220,29 +247,16 @@ fn format_analysis_comment(a: &PrAnalysis, config: &Config) -> String {
         a.pr_type,
         a.risk_level,
         a.summary,
-        if a.review_checklist.tests_present {
-            "x"
-        } else {
-            " "
-        },
-        if a.review_checklist.breaking_change {
-            "x"
-        } else {
-            " "
-        },
-        if a.review_checklist.docs_updated {
-            "x"
-        } else {
-            " "
-        },
+        check(a.review_checklist.tests_present),
+        check(a.review_checklist.breaking_change),
+        check(a.review_checklist.docs_updated),
     ));
 
-    if !a.linked_issues.is_empty() {
-        let links: Vec<String> = a.linked_issues.iter().map(|n| format!("#{n}")).collect();
-        comment.push_str(&format!("\n**Linked issues:** {}\n", links.join(", ")));
+    if !linked_issues.is_empty() {
+        comment.push_str(&format!("\n{linked_issues}\n"));
     }
 
-    comment.push_str(&format!("\n{}", config.branding.footer("Analyzed")));
+    comment.push_str(&format!("\n{footer}"));
     comment
 }
 
