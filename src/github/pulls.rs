@@ -332,7 +332,7 @@ impl Client {
         let body_with_marker = ensure_wshm_marker(body);
 
         // PRs use the issues comments API on GitHub
-        if let Some(comment_id) = self.find_wshm_comment(number).await? {
+        if let Some(comment_id) = self.find_wshm_comment(number, &self.comment_marker).await? {
             info!("Updating existing wshm comment {comment_id} on PR #{number}");
             self.update_comment(comment_id, &body_with_marker).await?;
         } else {

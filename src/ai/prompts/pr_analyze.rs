@@ -1,5 +1,7 @@
 use crate::db::pulls::PullRequest;
 
+use super::truncate_utf8;
+
 pub const SYSTEM: &str = r#"You are a pull request analysis assistant. Analyze the given PR and respond with a JSON object.
 
 Risk levels: "low", "medium", "high"
@@ -38,11 +40,12 @@ pub fn build_user_prompt(pr: &PullRequest, diff: Option<&str>) -> String {
     );
 
     if let Some(diff) = diff {
-        // Truncate very large diffs
+        // Truncate very large diffs (safe UTF-8 slicing)
         let truncated = if diff.len() > 10000 {
+            let end = truncate_utf8(diff, 10000);
             format!(
                 "{}...\n(truncated, {} total bytes)",
-                &diff[..10000],
+                &diff[..end],
                 diff.len()
             )
         } else {

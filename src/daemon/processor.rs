@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::mpsc;
-use tracing::{error, info};
+use tokio::sync::{mpsc, Mutex};
+use tracing::{error, info, warn};
 
 use super::commands;
 use super::memory;
@@ -8,6 +9,9 @@ use super::{DaemonState, MultiDaemonState};
 use crate::cli::{PrArgs, TriageArgs};
 use crate::github::sync as gh_sync;
 use crate::pipelines;
+
+/// Tracks which issue/PR numbers are currently being processed to prevent concurrent duplicates.
+type InFlight = Arc<Mutex<HashSet<u64>>>;
 
 #[derive(Debug, Clone)]
 pub struct WebhookEvent {
@@ -20,11 +24,13 @@ pub struct WebhookEvent {
 
 pub async fn run(state: Arc<DaemonState>, mut rx: mpsc::Receiver<WebhookEvent>) {
     info!("Event processor started");
+    let in_flight: InFlight = Arc::new(Mutex::new(HashSet::new()));
 
     while let Some(event) = rx.recv().await {
         let state = Arc::clone(&state);
+        let in_flight = Arc::clone(&in_flight);
         tokio::spawn(async move {
-            process_event(&state, &event).await;
+            process_guarded(&state, &event, &in_flight).await;
         });
     }
 
@@ -37,6 +43,7 @@ pub async fn run_multi(
     mut rx: mpsc::Receiver<(String, WebhookEvent)>,
 ) {
     info!("Multi-repo event processor started");
+    let in_flight: InFlight = Arc::new(Mutex::new(HashSet::new()));
 
     while let Some((slug, event)) = rx.recv().await {
         let state = match multi.repos.get(&slug) {
@@ -46,12 +53,33 @@ pub async fn run_multi(
                 continue;
             }
         };
+        let in_flight = Arc::clone(&in_flight);
         tokio::spawn(async move {
-            process_event(&state, &event).await;
+            process_guarded(&state, &event, &in_flight).await;
         });
     }
 
     info!("Multi-repo event processor stopped");
+}
+
+/// Guard against concurrent processing of the same issue/PR number.
+async fn process_guarded(state: &DaemonState, event: &WebhookEvent, in_flight: &InFlight) {
+    if let Some(number) = event.number {
+        {
+            let mut set = in_flight.lock().await;
+            if !set.insert(number) {
+                warn!("Skipping event id={} for #{number} (already in-flight)", event.id);
+                return;
+            }
+        }
+        process_event(state, event).await;
+        {
+            let mut set = in_flight.lock().await;
+            set.remove(&number);
+        }
+    } else {
+        process_event(state, event).await;
+    }
 }
 
 async fn process_event(state: &DaemonState, event: &WebhookEvent) {

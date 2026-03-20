@@ -8,6 +8,8 @@ pub struct Client {
     pub octocrab: Octocrab,
     pub owner: String,
     pub repo: String,
+    /// HTML comment marker for idempotent comment updates (from branding.name).
+    pub comment_marker: String,
 }
 
 impl Client {
@@ -22,6 +24,7 @@ impl Client {
             octocrab,
             owner: config.repo_owner.clone(),
             repo: config.repo_name.clone(),
+            comment_marker: config.branding.comment_marker(),
         })
     }
 

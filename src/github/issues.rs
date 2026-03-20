@@ -4,7 +4,8 @@ use tracing::{debug, info};
 use crate::db::issues::Issue;
 use crate::github::Client;
 
-/// Hidden HTML marker used to detect wshm comments for idempotent updates.
+/// Default hidden HTML marker used to detect wshm comments for idempotent updates.
+/// The actual marker is derived from branding.name via `BrandingConfig::comment_marker()`.
 pub const WSHM_COMMENT_MARKER: &str = "<!-- wshm -->";
 
 impl Client {
@@ -132,7 +133,7 @@ impl Client {
     pub async fn comment_issue(&self, number: u64, body: &str) -> Result<()> {
         let body_with_marker = ensure_wshm_marker(body);
 
-        if let Some(comment_id) = self.find_wshm_comment(number).await? {
+        if let Some(comment_id) = self.find_wshm_comment(number, &self.comment_marker).await? {
             info!("Updating existing wshm comment {comment_id} on issue #{number}");
             self.update_comment(comment_id, &body_with_marker).await?;
         } else {
@@ -147,7 +148,8 @@ impl Client {
 
     /// Find an existing wshm comment on an issue/PR by looking for the hidden marker.
     /// Returns `Some(comment_id)` if found, `None` otherwise.
-    pub async fn find_wshm_comment(&self, number: u64) -> Result<Option<u64>> {
+    /// Searches for both the custom marker and the legacy `<!-- wshm -->` marker.
+    pub async fn find_wshm_comment(&self, number: u64, marker: &str) -> Result<Option<u64>> {
         let mut page = 1u32;
 
         loop {
@@ -178,7 +180,7 @@ impl Client {
             for comment in &comments {
                 let comment_body = comment.get("body").and_then(|v| v.as_str()).unwrap_or("");
 
-                if comment_body.contains(WSHM_COMMENT_MARKER) {
+                if comment_body.contains(marker) || comment_body.contains(WSHM_COMMENT_MARKER) {
                     if let Some(id) = comment.get("id").and_then(|v| v.as_u64()) {
                         return Ok(Some(id));
                     }

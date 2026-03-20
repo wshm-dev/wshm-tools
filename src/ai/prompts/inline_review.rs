@@ -43,9 +43,10 @@ pub fn build_file_prompt(
     file_diff: &str,
 ) -> String {
     let truncated = if file_diff.len() > 15000 {
+        let end = super::truncate_utf8(file_diff, 15000);
         format!(
             "{}...\n(truncated, {} total bytes)",
-            &file_diff[..15000],
+            &file_diff[..end],
             file_diff.len()
         )
     } else {
@@ -61,9 +62,10 @@ pub fn build_file_prompt(
 /// Build prompt for the full diff (fallback for small PRs or single-file changes).
 pub fn build_user_prompt(pr_title: &str, pr_body: &str, diff: &str) -> String {
     let truncated = if diff.len() > 30000 {
+        let end = super::truncate_utf8(diff, 30000);
         format!(
             "{}...\n(truncated, {} total bytes)",
-            &diff[..30000],
+            &diff[..end],
             diff.len()
         )
     } else {
