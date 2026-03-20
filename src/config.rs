@@ -123,6 +123,10 @@ pub struct TriageConfig {
     #[serde(default = "default_confidence")]
     pub auto_fix_confidence: f64,
 
+    /// Minimum confidence to apply labels and post comments (default: 0.5)
+    #[serde(default = "default_triage_confidence")]
+    pub triage_confidence: f64,
+
     /// Override AI model for triage (uses [ai].model if not set)
     #[serde(default)]
     pub model: Option<String>,
@@ -153,6 +157,7 @@ impl Default for TriageConfig {
             enabled: true,
             auto_fix: false,
             auto_fix_confidence: default_confidence(),
+            triage_confidence: default_triage_confidence(),
             model: None,
             labels_bug: default_label_bug(),
             labels_feature: default_label_feature(),
@@ -169,6 +174,9 @@ fn default_true() -> bool {
 }
 fn default_confidence() -> f64 {
     0.85
+}
+fn default_triage_confidence() -> f64 {
+    0.5
 }
 fn default_label_bug() -> String {
     "bug".to_string()

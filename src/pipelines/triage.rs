@@ -228,7 +228,8 @@ async fn triage_issue(
         );
     }
 
-    if apply && classification.confidence >= config.triage.auto_fix_confidence {
+    // Apply labels/comments when confidence meets triage threshold
+    if apply && classification.confidence >= config.triage.triage_confidence {
         // Build new label set
         let mut new_labels = classification.suggested_labels.clone();
         if let Some(ref priority) = classification.priority {
