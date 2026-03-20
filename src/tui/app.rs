@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashMap;
 
 use crate::config::Config;
 use crate::db::issues::Issue;
@@ -11,6 +12,7 @@ pub enum Tab {
     Issues,
     PullRequests,
     Queue,
+    Stats,
     Activity,
 }
 
@@ -20,18 +22,27 @@ impl Tab {
             Tab::Issues => "Issues",
             Tab::PullRequests => "Pull Requests",
             Tab::Queue => "Merge Queue",
+            Tab::Stats => "Stats",
             Tab::Activity => "Activity",
         }
     }
 
     pub fn all() -> &'static [Tab] {
-        &[Tab::Issues, Tab::PullRequests, Tab::Queue, Tab::Activity]
+        &[Tab::Issues, Tab::PullRequests, Tab::Queue, Tab::Stats, Tab::Activity]
     }
 }
 
 pub struct IssueRow {
     pub issue: Issue,
     pub triage: Option<TriageResultRow>,
+}
+
+pub struct Stats {
+    pub by_category: Vec<(String, usize)>,
+    pub by_priority: Vec<(String, usize)>,
+    pub avg_confidence: f64,
+    pub total_triaged: usize,
+    pub recent_triages: Vec<TriageResultRow>,
 }
 
 pub struct App {
@@ -45,6 +56,7 @@ pub struct App {
     pub open_issue_count: usize,
     pub open_pr_count: usize,
     pub conflict_count: usize,
+    pub stats: Stats,
 }
 
 impl App {
@@ -59,6 +71,13 @@ impl App {
             open_issue_count: 0,
             open_pr_count: 0,
             conflict_count: 0,
+            stats: Stats {
+                by_category: Vec::new(),
+                by_priority: Vec::new(),
+                avg_confidence: 0.0,
+                total_triaged: 0,
+                recent_triages: Vec::new(),
+            },
         };
         app.refresh(db)?;
         Ok(app)
@@ -84,8 +103,50 @@ impl App {
         self.conflict_count = pulls.iter().filter(|p| p.mergeable == Some(false)).count();
         self.pulls = pulls;
 
+        // Build stats from triage results
+        self.build_stats();
+
         self.scroll_offset = 0;
         Ok(())
+    }
+
+    fn build_stats(&mut self) {
+        let triaged: Vec<&TriageResultRow> = self.issues.iter()
+            .filter_map(|r| r.triage.as_ref())
+            .collect();
+
+        self.stats.total_triaged = triaged.len();
+
+        // Category breakdown
+        let mut cat_map: HashMap<String, usize> = HashMap::new();
+        for t in &triaged {
+            *cat_map.entry(t.category.clone()).or_default() += 1;
+        }
+        self.stats.by_category = cat_map.into_iter().collect();
+        self.stats.by_category.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Priority breakdown
+        let mut pri_map: HashMap<String, usize> = HashMap::new();
+        for t in &triaged {
+            let pri = t.priority.clone().unwrap_or_else(|| "unset".to_string());
+            *pri_map.entry(pri).or_default() += 1;
+        }
+        self.stats.by_priority = pri_map.into_iter().collect();
+        self.stats.by_priority.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Average confidence
+        if !triaged.is_empty() {
+            let sum: f64 = triaged.iter().map(|t| t.confidence).sum();
+            self.stats.avg_confidence = sum / triaged.len() as f64;
+        }
+
+        // Recent triages (last 20, by acted_at descending)
+        let mut recent: Vec<TriageResultRow> = self.issues.iter()
+            .filter_map(|r| r.triage.clone())
+            .collect();
+        recent.sort_by(|a, b| b.acted_at.cmp(&a.acted_at));
+        recent.truncate(20);
+        self.stats.recent_triages = recent;
     }
 
     pub fn next_tab(&mut self) {
@@ -118,6 +179,7 @@ impl App {
             Tab::Issues => self.issues.len(),
             Tab::PullRequests => self.pulls.len(),
             Tab::Queue => self.pulls.len(),
+            Tab::Stats => self.stats.recent_triages.len(),
             Tab::Activity => 0,
         }
     }
