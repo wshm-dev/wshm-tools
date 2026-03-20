@@ -68,6 +68,13 @@ fn run_loop(
                         KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
                         KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
                         KeyCode::Char('r') => app.refresh(db)?,
+                        KeyCode::Char('s') => app.set_sort(app::SortField::Number),
+                        KeyCode::Char('t') => app.set_sort(app::SortField::Title),
+                        KeyCode::Char('c') => app.set_sort(app::SortField::Category),
+                        KeyCode::Char('p') => app.set_sort(app::SortField::Priority),
+                        KeyCode::Char('a') => app.set_sort(app::SortField::Age),
+                        KeyCode::Char('o') => app.set_sort(app::SortField::Confidence),
+                        KeyCode::Char('m') => app.set_sort(app::SortField::Mergeable),
                         _ => {}
                     }
                 }

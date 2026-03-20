@@ -6,7 +6,15 @@ use ratatui::{
     Frame,
 };
 
-use super::app::{App, Tab};
+use super::app::{App, SortField, Tab};
+
+fn sort_header(app: &App, label: &str, field: SortField) -> String {
+    if app.sort_field == field {
+        format!("{} {}", label, app.sort_dir.arrow())
+    } else {
+        label.to_string()
+    }
+}
 
 pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
@@ -104,12 +112,19 @@ fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_issues(f: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(vec!["#", "Title", "Category", "Conf", "Priority", "Labels"])
-        .style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+    let header = Row::new(vec![
+        sort_header(app, "#(s)", SortField::Number),
+        sort_header(app, "Title(t)", SortField::Title),
+        sort_header(app, "Cat(c)", SortField::Category),
+        sort_header(app, "Conf(o)", SortField::Confidence),
+        sort_header(app, "Pri(p)", SortField::Priority),
+        "Labels".to_string(),
+    ])
+    .style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
 
     let rows: Vec<Row> = app
         .issues
@@ -181,7 +196,14 @@ fn draw_issues(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_pulls(f: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(vec!["#", "Title", "Author", "Base", "Mergeable", "CI"])
+    let header = Row::new(vec![
+        sort_header(app, "#(s)", SortField::Number),
+        sort_header(app, "Title(t)", SortField::Title),
+        "Author".to_string(),
+        "Base".to_string(),
+        sort_header(app, "Merge(m)", SortField::Mergeable),
+        "CI".to_string(),
+    ])
         .style(
             Style::default()
                 .fg(Color::Yellow)
@@ -472,6 +494,8 @@ fn draw_footer(f: &mut Frame, area: Rect) {
         Span::raw("tabs  "),
         Span::styled("j/k ", Style::default().fg(Color::Cyan)),
         Span::raw("scroll  "),
+        Span::styled("s/t/c/p/o/a/m ", Style::default().fg(Color::Cyan)),
+        Span::raw("sort  "),
         Span::styled("r ", Style::default().fg(Color::Cyan)),
         Span::raw("refresh  "),
         Span::styled("q ", Style::default().fg(Color::Cyan)),

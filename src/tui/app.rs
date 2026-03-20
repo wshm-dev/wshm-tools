@@ -32,6 +32,40 @@ impl Tab {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum SortField {
+    Number,
+    Title,
+    Category,
+    Confidence,
+    Priority,
+    Age,
+    Author,
+    Mergeable,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum SortDir {
+    Asc,
+    Desc,
+}
+
+impl SortDir {
+    pub fn toggle(&self) -> Self {
+        match self {
+            SortDir::Asc => SortDir::Desc,
+            SortDir::Desc => SortDir::Asc,
+        }
+    }
+
+    pub fn arrow(&self) -> &'static str {
+        match self {
+            SortDir::Asc => "▲",
+            SortDir::Desc => "▼",
+        }
+    }
+}
+
 pub struct IssueRow {
     pub issue: Issue,
     pub triage: Option<TriageResultRow>,
@@ -61,6 +95,8 @@ pub struct App {
     pub repo_slug: String,
     pub active_tab: Tab,
     pub scroll_offset: usize,
+    pub sort_field: SortField,
+    pub sort_dir: SortDir,
 
     pub issues: Vec<IssueRow>,
     pub pulls: Vec<PullRequest>,
@@ -77,6 +113,8 @@ impl App {
             repo_slug: config.repo_slug(),
             active_tab: Tab::Issues,
             scroll_offset: 0,
+            sort_field: SortField::Number,
+            sort_dir: SortDir::Desc,
             issues: Vec::new(),
             pulls: Vec::new(),
             triaged_count: 0,
@@ -225,6 +263,80 @@ impl App {
         let max = self.current_list_len().saturating_sub(1);
         if self.scroll_offset < max {
             self.scroll_offset += 1;
+        }
+    }
+
+    /// Set sort field. If same field, toggle direction. Then re-sort.
+    pub fn set_sort(&mut self, field: SortField) {
+        if self.sort_field == field {
+            self.sort_dir = self.sort_dir.toggle();
+        } else {
+            self.sort_field = field;
+            self.sort_dir = SortDir::Desc;
+        }
+        self.apply_sort();
+        self.scroll_offset = 0;
+    }
+
+    pub fn apply_sort(&mut self) {
+        let dir = self.sort_dir;
+        match self.active_tab {
+            Tab::Issues => {
+                self.issues.sort_by(|a, b| {
+                    let cmp = match self.sort_field {
+                        SortField::Number => a.issue.number.cmp(&b.issue.number),
+                        SortField::Title => a.issue.title.to_lowercase().cmp(&b.issue.title.to_lowercase()),
+                        SortField::Category => {
+                            let ac = a.triage.as_ref().map(|t| t.category.as_str()).unwrap_or("");
+                            let bc = b.triage.as_ref().map(|t| t.category.as_str()).unwrap_or("");
+                            ac.cmp(bc)
+                        }
+                        SortField::Confidence => {
+                            let ac = a.triage.as_ref().map(|t| t.confidence).unwrap_or(0.0);
+                            let bc = b.triage.as_ref().map(|t| t.confidence).unwrap_or(0.0);
+                            ac.partial_cmp(&bc).unwrap_or(std::cmp::Ordering::Equal)
+                        }
+                        SortField::Priority => {
+                            let pri_rank = |p: Option<&str>| match p {
+                                Some("critical") => 0,
+                                Some("high") => 1,
+                                Some("medium") => 2,
+                                Some("low") => 3,
+                                _ => 4,
+                            };
+                            let ap = pri_rank(a.triage.as_ref().and_then(|t| t.priority.as_deref()));
+                            let bp = pri_rank(b.triage.as_ref().and_then(|t| t.priority.as_deref()));
+                            ap.cmp(&bp)
+                        }
+                        SortField::Age => a.issue.created_at.cmp(&b.issue.created_at),
+                        SortField::Author => {
+                            let aa = a.issue.author.as_deref().unwrap_or("");
+                            let ba = b.issue.author.as_deref().unwrap_or("");
+                            aa.cmp(ba)
+                        }
+                        _ => std::cmp::Ordering::Equal,
+                    };
+                    if dir == SortDir::Desc { cmp.reverse() } else { cmp }
+                });
+            }
+            Tab::PullRequests | Tab::Queue => {
+                self.pulls.sort_by(|a, b| {
+                    let cmp = match self.sort_field {
+                        SortField::Number => a.number.cmp(&b.number),
+                        SortField::Title => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
+                        SortField::Author => {
+                            let aa = a.author.as_deref().unwrap_or("");
+                            let ba = b.author.as_deref().unwrap_or("");
+                            aa.cmp(ba)
+                        }
+                        SortField::Mergeable => a.mergeable.cmp(&b.mergeable),
+                        SortField::Age => a.created_at.cmp(&b.created_at),
+                        _ => std::cmp::Ordering::Equal,
+                    };
+                    if dir == SortDir::Desc { cmp.reverse() } else { cmp }
+                });
+            }
+            _ => {}
         }
     }
 
