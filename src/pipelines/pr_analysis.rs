@@ -110,6 +110,13 @@ async fn analyze_pr(
     );
 
     let mut user_prompt = pr_analyze::build_user_prompt(pr, diff.as_deref());
+
+    // Inject custom label definitions if configured
+    let labels_prompt = config.labels_prompt();
+    if !labels_prompt.is_empty() {
+        user_prompt.push_str(&labels_prompt);
+    }
+
     if !icm_context.is_empty() {
         user_prompt.push_str(&format!(
             "\n\n## Past PR analysis context (from memory)\n{icm_context}"

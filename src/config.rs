@@ -53,6 +53,10 @@ pub struct Config {
     #[serde(default)]
     pub labels_blacklist: Vec<String>,
 
+    /// Label definitions with conditions. Fed to AI for better label selection.
+    #[serde(default)]
+    pub labels: Vec<LabelDef>,
+
     /// Resolved at runtime, not from config file
     #[serde(skip)]
     pub repo_owner: String,
@@ -272,6 +276,48 @@ impl Default for SyncConfig {
 
 fn default_sync_interval() -> u32 {
     5
+}
+
+// ── Label definitions ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LabelDef {
+    /// Label name (e.g. "bug", "priority:high")
+    pub name: String,
+
+    /// What this label means
+    #[serde(default)]
+    pub description: Option<String>,
+
+    /// When to apply this label
+    #[serde(default)]
+    pub when: Option<String>,
+
+    /// Label color (hex, e.g. "d73a4a")
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+impl Config {
+    /// Build a prompt fragment describing the available labels for the AI.
+    pub fn labels_prompt(&self) -> String {
+        if self.labels.is_empty() {
+            return String::new();
+        }
+        let mut out = String::from("\n## Available labels (use ONLY these):\n");
+        for label in &self.labels {
+            out.push_str(&format!("- **{}**", label.name));
+            if let Some(ref desc) = label.description {
+                out.push_str(&format!(": {desc}"));
+            }
+            if let Some(ref when) = label.when {
+                out.push_str(&format!(" — Apply when: {when}"));
+            }
+            out.push('\n');
+        }
+        out.push_str("\nDo NOT invent labels outside this list.\n");
+        out
+    }
 }
 
 // ── Assign config ─────────────────────────────────────────────
@@ -900,6 +946,37 @@ full_sync_interval_hours = 24
 # Labels that wshm must never apply (case-insensitive)
 # labels_blacklist = ["do-not-touch", "manual-only", "security"]
 
+# Label definitions (fed to AI for better label selection)
+# [[labels]]
+# name = "bug"
+# description = "Something is broken or produces wrong results"
+# when = "Confirmed broken behavior with clear repro steps"
+#
+# [[labels]]
+# name = "enhancement"
+# description = "New feature or improvement request"
+# when = "Request for new capability, not a fix"
+#
+# [[labels]]
+# name = "priority:critical"
+# description = "Blocks users, data loss, security vulnerability"
+# when = "Production down, data corruption, or security exploit"
+#
+# [[labels]]
+# name = "priority:high"
+# description = "Major impact, needs attention soon"
+# when = "Core feature broken, no workaround"
+#
+# [[labels]]
+# name = "priority:medium"
+# description = "Moderate impact, can wait"
+# when = "Feature degraded but workaround exists"
+#
+# [[labels]]
+# name = "priority:low"
+# description = "Minor or cosmetic"
+# when = "Edge case or low-impact improvement"
+
 # [assign]
 # enabled = true
 #
@@ -1018,6 +1095,7 @@ impl Default for Config {
             export: ExportConfig::default(),
             vault: None,
             labels_blacklist: Vec::new(),
+            labels: Vec::new(),
             repo_owner: String::new(),
             repo_name: String::new(),
             wshm_dir: PathBuf::from(".wshm"),

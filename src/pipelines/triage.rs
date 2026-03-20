@@ -181,6 +181,13 @@ async fn triage_issue(
     );
 
     let mut user_prompt = issue_classify::build_user_prompt(issue, existing_issues);
+
+    // Inject custom label definitions if configured
+    let labels_prompt = config.labels_prompt();
+    if !labels_prompt.is_empty() {
+        user_prompt.push_str(&labels_prompt);
+    }
+
     if !icm_context.is_empty() {
         user_prompt.push_str(&format!(
             "\n\n## Past triage context (from memory)\n{icm_context}"
