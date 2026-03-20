@@ -326,9 +326,13 @@ impl AssignConfig {
 }
 
 /// Simple random u32 without pulling in the `rand` crate.
+/// Uses a counter to avoid identical results on rapid consecutive calls.
 fn rand_u32() -> u32 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
     let mut hasher = DefaultHasher::new();
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -336,6 +340,7 @@ fn rand_u32() -> u32 {
         .as_nanos()
         .hash(&mut hasher);
     std::thread::current().id().hash(&mut hasher);
+    COUNTER.fetch_add(1, Ordering::Relaxed).hash(&mut hasher);
     hasher.finish() as u32
 }
 fn default_full_sync_interval() -> u32 {
@@ -657,7 +662,7 @@ pub struct VaultConfig {
 }
 
 fn default_daemon_bind() -> String {
-    "0.0.0.0:3000".to_string()
+    "127.0.0.1:3000".to_string()
 }
 
 fn default_icm_prefix() -> String {

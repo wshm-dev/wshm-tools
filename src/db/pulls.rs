@@ -131,31 +131,33 @@ pub fn upsert_pull(conn: &Connection, pr: &PullRequest) -> Result<()> {
     Ok(())
 }
 
+fn row_to_pull(row: &rusqlite::Row) -> rusqlite::Result<PullRequest> {
+    let labels_json: String = row.get(4)?;
+    Ok(PullRequest {
+        number: row.get(0)?,
+        title: row.get(1)?,
+        body: row.get(2)?,
+        state: row.get(3)?,
+        labels: super::parse_labels_json(&labels_json),
+        author: row.get(5)?,
+        head_sha: row.get(6)?,
+        base_sha: row.get(7)?,
+        head_ref: row.get(8)?,
+        base_ref: row.get(9)?,
+        mergeable: row.get(10)?,
+        ci_status: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+    })
+}
+
 pub fn get_pull(conn: &Connection, number: u64) -> Result<Option<PullRequest>> {
     let mut stmt = conn.prepare(
         "SELECT number, title, body, state, labels, author, head_sha, base_sha, head_ref, base_ref, mergeable, ci_status, created_at, updated_at
          FROM pull_requests WHERE number = ?1",
     )?;
 
-    let result = stmt.query_row(params![number], |row| {
-        let labels_json: String = row.get(4)?;
-        Ok(PullRequest {
-            number: row.get(0)?,
-            title: row.get(1)?,
-            body: row.get(2)?,
-            state: row.get(3)?,
-            labels: super::parse_labels_json(&labels_json),
-            author: row.get(5)?,
-            head_sha: row.get(6)?,
-            base_sha: row.get(7)?,
-            head_ref: row.get(8)?,
-            base_ref: row.get(9)?,
-            mergeable: row.get(10)?,
-            ci_status: row.get(11)?,
-            created_at: row.get(12)?,
-            updated_at: row.get(13)?,
-        })
-    });
+    let result = stmt.query_row(params![number], row_to_pull);
 
     match result {
         Ok(pr) => Ok(Some(pr)),
@@ -170,28 +172,7 @@ pub fn get_open_pulls(conn: &Connection) -> Result<Vec<PullRequest>> {
          FROM pull_requests WHERE state = 'open' ORDER BY number DESC",
     )?;
 
-    let pulls = stmt
-        .query_map([], |row| {
-            let labels_json: String = row.get(4)?;
-            Ok(PullRequest {
-                number: row.get(0)?,
-                title: row.get(1)?,
-                body: row.get(2)?,
-                state: row.get(3)?,
-                labels: super::parse_labels_json(&labels_json),
-                author: row.get(5)?,
-                head_sha: row.get(6)?,
-                base_sha: row.get(7)?,
-                head_ref: row.get(8)?,
-                base_ref: row.get(9)?,
-                mergeable: row.get(10)?,
-                ci_status: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
+    let pulls = stmt.query_map([], row_to_pull)?.collect::<Result<Vec<_>, _>>()?;
     Ok(pulls)
 }
 
@@ -204,27 +185,6 @@ pub fn get_unanalyzed_pulls(conn: &Connection) -> Result<Vec<PullRequest>> {
          ORDER BY p.number DESC",
     )?;
 
-    let pulls = stmt
-        .query_map([], |row| {
-            let labels_json: String = row.get(4)?;
-            Ok(PullRequest {
-                number: row.get(0)?,
-                title: row.get(1)?,
-                body: row.get(2)?,
-                state: row.get(3)?,
-                labels: super::parse_labels_json(&labels_json),
-                author: row.get(5)?,
-                head_sha: row.get(6)?,
-                base_sha: row.get(7)?,
-                head_ref: row.get(8)?,
-                base_ref: row.get(9)?,
-                mergeable: row.get(10)?,
-                ci_status: row.get(11)?,
-                created_at: row.get(12)?,
-                updated_at: row.get(13)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
+    let pulls = stmt.query_map([], row_to_pull)?.collect::<Result<Vec<_>, _>>()?;
     Ok(pulls)
 }

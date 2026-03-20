@@ -260,9 +260,11 @@ impl LocalClient {
                 .context("Failed to create user message")?,
         ];
 
-        let template = model.chat_template(None).unwrap_or_else(|_| {
-            LlamaChatTemplate::new("chatml").expect("Failed to create chatml template")
-        });
+        let template = match model.chat_template(None) {
+            Ok(t) => t,
+            Err(_) => LlamaChatTemplate::new("chatml")
+                .context("Failed to create chatml fallback template")?,
+        };
 
         let prompt = model
             .apply_chat_template(&template, &messages, true)
@@ -282,6 +284,10 @@ impl LocalClient {
                 max_prompt_tokens
             );
             tokens.truncate(max_prompt_tokens);
+        }
+
+        if tokens.is_empty() {
+            anyhow::bail!("Tokenization produced zero tokens");
         }
 
         info!("Prompt tokens: {}", tokens.len());

@@ -96,27 +96,29 @@ pub fn upsert_issue(conn: &Connection, issue: &Issue) -> Result<()> {
     Ok(())
 }
 
+fn row_to_issue(row: &rusqlite::Row) -> rusqlite::Result<Issue> {
+    let labels_json: String = row.get(4)?;
+    Ok(Issue {
+        number: row.get(0)?,
+        title: row.get(1)?,
+        body: row.get(2)?,
+        state: row.get(3)?,
+        labels: parse_labels_json(&labels_json),
+        author: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+        reactions_plus1: row.get(8)?,
+        reactions_total: row.get(9)?,
+    })
+}
+
 pub fn get_issue(conn: &Connection, number: u64) -> Result<Option<Issue>> {
     let mut stmt = conn.prepare(
         "SELECT number, title, body, state, labels, author, created_at, updated_at, reactions_plus1, reactions_total
          FROM issues WHERE number = ?1",
     )?;
 
-    let result = stmt.query_row(params![number], |row| {
-        let labels_json: String = row.get(4)?;
-        Ok(Issue {
-            number: row.get(0)?,
-            title: row.get(1)?,
-            body: row.get(2)?,
-            state: row.get(3)?,
-            labels: parse_labels_json(&labels_json),
-            author: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
-            reactions_plus1: row.get(8)?,
-            reactions_total: row.get(9)?,
-        })
-    });
+    let result = stmt.query_row(params![number], row_to_issue);
 
     match result {
         Ok(issue) => Ok(Some(issue)),
@@ -131,24 +133,7 @@ pub fn get_open_issues(conn: &Connection) -> Result<Vec<Issue>> {
          FROM issues WHERE state = 'open' ORDER BY number DESC",
     )?;
 
-    let issues = stmt
-        .query_map([], |row| {
-            let labels_json: String = row.get(4)?;
-            Ok(Issue {
-                number: row.get(0)?,
-                title: row.get(1)?,
-                body: row.get(2)?,
-                state: row.get(3)?,
-                labels: parse_labels_json(&labels_json),
-                author: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-                reactions_plus1: row.get(8)?,
-                reactions_total: row.get(9)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
+    let issues = stmt.query_map([], row_to_issue)?.collect::<Result<Vec<_>, _>>()?;
     Ok(issues)
 }
 
@@ -161,24 +146,7 @@ pub fn get_untriaged_issues(conn: &Connection) -> Result<Vec<Issue>> {
          ORDER BY i.number DESC",
     )?;
 
-    let issues = stmt
-        .query_map([], |row| {
-            let labels_json: String = row.get(4)?;
-            Ok(Issue {
-                number: row.get(0)?,
-                title: row.get(1)?,
-                body: row.get(2)?,
-                state: row.get(3)?,
-                labels: parse_labels_json(&labels_json),
-                author: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-                reactions_plus1: row.get(8)?,
-                reactions_total: row.get(9)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
+    let issues = stmt.query_map([], row_to_issue)?.collect::<Result<Vec<_>, _>>()?;
     Ok(issues)
 }
 

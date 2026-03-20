@@ -87,8 +87,8 @@ impl Client {
                 });
             }
 
-            if items.len() < 100 {
-                break; // Last page
+            if items.len() < 100 || page >= 100 {
+                break; // Last page or safety cap
             }
             page += 1;
         }

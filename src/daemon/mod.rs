@@ -112,20 +112,25 @@ pub async fn run(config: Config, args: DaemonArgs) -> Result<()> {
     info!("Daemon running. Press Ctrl+C to stop.");
 
     // Wait for SIGINT or SIGTERM
-    let shutdown = async {
-        tokio::signal::ctrl_c().await.ok();
-    };
     #[cfg(unix)]
-    let shutdown = async {
-        let mut sigterm =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("Failed to register SIGTERM handler");
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = sigterm.recv() => {}
+    {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = sigterm.recv() => {}
+                }
+            }
+            Err(e) => {
+                warn!("Failed to register SIGTERM handler ({e}), falling back to Ctrl+C only");
+                tokio::signal::ctrl_c().await.ok();
+            }
         }
-    };
-    shutdown.await;
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c().await.ok();
+    }
     info!("Shutdown signal received, stopping...");
 
     if let Some(h) = server_handle {
@@ -274,20 +279,25 @@ pub async fn run_multi(global: GlobalConfig, args: DaemonArgs) -> Result<()> {
     );
 
     // Wait for SIGINT (Ctrl+C) or SIGTERM (systemd/docker)
-    let shutdown = async {
-        tokio::signal::ctrl_c().await.ok();
-    };
     #[cfg(unix)]
-    let shutdown = async {
-        let mut sigterm =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("Failed to register SIGTERM handler");
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = sigterm.recv() => {}
+    {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = sigterm.recv() => {}
+                }
+            }
+            Err(e) => {
+                warn!("Failed to register SIGTERM handler ({e}), falling back to Ctrl+C only");
+                tokio::signal::ctrl_c().await.ok();
+            }
         }
-    };
-    shutdown.await;
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c().await.ok();
+    }
     info!("Shutdown signal received, stopping...");
 
     // Stop accepting new events: abort server, pollers, schedulers, update

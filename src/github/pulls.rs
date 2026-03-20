@@ -1,9 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::db::pulls::PullRequest;
-use crate::github::issues::ensure_wshm_marker;
 use crate::github::Client;
 
 /// A merged pull request with its merge date
@@ -152,8 +150,8 @@ impl Client {
                 });
             }
 
-            if items.len() < 100 {
-                break; // Last page
+            if items.len() < 100 || page >= 100 {
+                break; // Last page or safety cap
             }
             page += 1;
         }
@@ -311,21 +309,8 @@ impl Client {
     }
 
     /// Post or update a wshm comment on a PR.
-    /// If a wshm comment already exists, it is updated in place (idempotent).
+    /// Delegates to comment_issue since GitHub uses the same API for both.
     pub async fn comment_pr(&self, number: u64, body: &str) -> Result<()> {
-        let body_with_marker = ensure_wshm_marker(body);
-
-        // PRs use the issues comments API on GitHub
-        if let Some(comment_id) = self.find_wshm_comment(number, &self.comment_marker).await? {
-            info!("Updating existing wshm comment {comment_id} on PR #{number}");
-            self.update_comment(comment_id, &body_with_marker).await?;
-        } else {
-            self.octocrab
-                .issues(&self.owner, &self.repo)
-                .create_comment(number, &body_with_marker)
-                .await
-                .with_context(|| format!("Failed to comment on PR #{number}"))?;
-        }
-        Ok(())
+        self.comment_issue(number, body).await
     }
 }
