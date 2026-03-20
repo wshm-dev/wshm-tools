@@ -118,6 +118,7 @@ fn draw_issues(f: &mut Frame, app: &App, area: Rect) {
         sort_header(app, "Cat(c)", SortField::Category),
         sort_header(app, "Conf(o)", SortField::Confidence),
         sort_header(app, "Pri(p)", SortField::Priority),
+        "PRs".to_string(),
         "Labels".to_string(),
     ])
     .style(
@@ -162,12 +163,20 @@ fn draw_issues(f: &mut Frame, app: &App, area: Rect) {
                 )
             };
 
+            let pr_cell = if r.linked_prs.is_empty() {
+                Cell::from("-").style(Style::default().fg(Color::DarkGray))
+            } else {
+                let pr_text: Vec<String> = r.linked_prs.iter().map(|n| format!("#{n}")).collect();
+                Cell::from(pr_text.join(",")).style(Style::default().fg(Color::Green))
+            };
+
             Row::new(vec![
                 Cell::from(format!("#{}", r.issue.number)),
                 Cell::from(truncate(&r.issue.title, 50)),
                 cat,
                 conf,
                 pri,
+                pr_cell,
                 labels,
             ])
         })
@@ -179,7 +188,8 @@ fn draw_issues(f: &mut Frame, app: &App, area: Rect) {
         Constraint::Length(12),
         Constraint::Length(6),
         Constraint::Length(10),
-        Constraint::Min(20),
+        Constraint::Length(10),
+        Constraint::Min(15),
     ];
 
     let table = Table::new(rows, widths)

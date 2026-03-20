@@ -69,6 +69,8 @@ impl SortDir {
 pub struct IssueRow {
     pub issue: Issue,
     pub triage: Option<TriageResultRow>,
+    /// PR numbers that reference this issue.
+    pub linked_prs: Vec<u64>,
 }
 
 /// Age bucket for issues/PRs drift analysis.
@@ -142,18 +144,27 @@ impl App {
         let open_issues = db.get_open_issues()?;
         self.open_issue_count = open_issues.len();
 
-        // Build issue rows with triage results
+        let pulls = db.get_open_pulls()?;
+
+        // Build issue rows with triage results + linked PRs
         self.issues = open_issues
             .into_iter()
             .map(|issue| {
                 let triage = db.get_triage_result(issue.number).ok().flatten();
-                IssueRow { issue, triage }
+                let issue_ref = format!("#{}", issue.number);
+                let linked_prs: Vec<u64> = pulls
+                    .iter()
+                    .filter(|pr| {
+                        pr.body.as_deref().map_or(false, |b| b.contains(&issue_ref))
+                            || pr.title.contains(&issue_ref)
+                    })
+                    .map(|pr| pr.number)
+                    .collect();
+                IssueRow { issue, triage, linked_prs }
             })
             .collect();
 
         self.triaged_count = self.issues.iter().filter(|r| r.triage.is_some()).count();
-
-        let pulls = db.get_open_pulls()?;
         self.open_pr_count = pulls.len();
         self.conflict_count = pulls.iter().filter(|p| p.mergeable == Some(false)).count();
         self.pulls = pulls;
