@@ -62,34 +62,78 @@ async fn fetch_latest_release(
     Ok((tag, html_url))
 }
 
-/// Download checksums file from a release.
-async fn fetch_checksums(http: &reqwest::Client, tag: &str, token: Option<&str>) -> Result<String> {
-    let url = format!("https://github.com/{REPO}/releases/download/{tag}/checksums-{tag}.sha256");
+/// Fetch release assets list from the GitHub API (works for private repos).
+async fn fetch_release_assets(
+    http: &reqwest::Client,
+    tag: &str,
+    token: Option<&str>,
+) -> Result<Vec<(String, String)>> {
+    let url = format!("https://api.github.com/repos/{REPO}/releases/tags/{tag}");
 
-    let mut req = http.get(&url).header("User-Agent", "wshm-updater");
+    let mut req = http
+        .get(&url)
+        .header("User-Agent", "wshm-updater")
+        .header("Accept", "application/vnd.github+json");
     if let Some(t) = token {
         req = req.header("Authorization", format!("Bearer {t}"));
     }
 
-    let resp = req
-        .send()
-        .await
-        .context("Failed to download checksums file")?;
+    let resp = req.send().await.context("Failed to fetch release assets")?;
     if !resp.status().is_success() {
-        // Fallback to legacy checksums.txt for older releases
-        let legacy_url = format!("https://github.com/{REPO}/releases/download/{tag}/checksums.txt");
-        let mut req = http.get(&legacy_url).header("User-Agent", "wshm-updater");
-        if let Some(t) = token {
-            req = req.header("Authorization", format!("Bearer {t}"));
-        }
-        let resp = req.send().await.context("Failed to download checksums")?;
-        if !resp.status().is_success() {
-            anyhow::bail!("Failed to download checksums for {tag} ({})", resp.status());
-        }
-        return Ok(resp.text().await?);
+        anyhow::bail!("Failed to fetch release {tag} ({})", resp.status());
     }
 
-    Ok(resp.text().await?)
+    let json: serde_json::Value = serde_json::from_str(&resp.text().await?)?;
+    let assets = json["assets"]
+        .as_array()
+        .context("Missing assets in release")?;
+
+    let mut result = Vec::new();
+    for asset in assets {
+        let name = asset["name"].as_str().unwrap_or("").to_string();
+        let download_url = asset["url"].as_str().unwrap_or("").to_string();
+        if !name.is_empty() && !download_url.is_empty() {
+            result.push((name, download_url));
+        }
+    }
+
+    Ok(result)
+}
+
+/// Download a release asset by its API URL (works for private repos).
+async fn download_asset(
+    http: &reqwest::Client,
+    api_url: &str,
+    token: Option<&str>,
+) -> Result<Vec<u8>> {
+    let mut req = http
+        .get(api_url)
+        .header("User-Agent", "wshm-updater")
+        .header("Accept", "application/octet-stream");
+    if let Some(t) = token {
+        req = req.header("Authorization", format!("Bearer {t}"));
+    }
+
+    let resp = req.send().await.context("Failed to download asset")?;
+    if !resp.status().is_success() {
+        anyhow::bail!("Failed to download asset ({})", resp.status());
+    }
+
+    Ok(resp.bytes().await?.to_vec())
+}
+
+/// Download checksums file from a release (via API for private repo support).
+async fn fetch_checksums(http: &reqwest::Client, tag: &str, token: Option<&str>, assets: &[(String, String)]) -> Result<String> {
+    // Look for checksums file in assets
+    let checksums_name = format!("checksums-{tag}.sha256");
+    let asset_url = assets
+        .iter()
+        .find(|(name, _)| name == &checksums_name || name == "checksums.txt")
+        .map(|(_, url)| url.as_str())
+        .with_context(|| format!("No checksums file found in release {tag}"))?;
+
+    let data = download_asset(http, asset_url, token).await?;
+    Ok(String::from_utf8(data).context("Checksums file is not valid UTF-8")?)
 }
 
 /// Parse expected SHA256 for a given target from checksums.txt.
@@ -106,12 +150,12 @@ fn parse_checksum(checksums: &str, target: &str) -> Result<String> {
     anyhow::bail!("No checksum found for target {target} in checksums.txt")
 }
 
-/// Download the release binary for this platform.
+/// Download the release binary for this platform (via API for private repo support).
 async fn download_binary(
     http: &reqwest::Client,
-    tag: &str,
     target: &str,
     token: Option<&str>,
+    assets: &[(String, String)],
 ) -> Result<Vec<u8>> {
     let ext = if target.contains("windows") {
         "zip"
@@ -119,21 +163,15 @@ async fn download_binary(
         "tar.gz"
     };
     let asset_name = format!("wshm-{target}.{ext}");
-    let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset_name}");
+
+    let asset_url = assets
+        .iter()
+        .find(|(name, _)| name == &asset_name)
+        .map(|(_, url)| url.as_str())
+        .with_context(|| format!("Asset {asset_name} not found in release"))?;
 
     info!("Downloading {asset_name}...");
-
-    let mut req = http.get(&url).header("User-Agent", "wshm-updater");
-    if let Some(t) = token {
-        req = req.header("Authorization", format!("Bearer {t}"));
-    }
-
-    let resp = req.send().await.context("Failed to download binary")?;
-    if !resp.status().is_success() {
-        anyhow::bail!("Failed to download {asset_name} ({})", resp.status());
-    }
-
-    Ok(resp.bytes().await?.to_vec())
+    download_asset(http, asset_url, token).await
 }
 
 /// Compute SHA256 of bytes and return hex string.
@@ -288,13 +326,16 @@ pub async fn check_and_update(apply: bool, json: bool) -> Result<Option<String>>
 
     let target = asset_target()?;
 
+    // Fetch release assets list (works for both public and private repos)
+    let assets = fetch_release_assets(&http, &tag, token_ref).await?;
+
     // Download checksums
-    let checksums = fetch_checksums(&http, &tag, token_ref).await?;
+    let checksums = fetch_checksums(&http, &tag, token_ref, &assets).await?;
     let expected_hash = parse_checksum(&checksums, target)?;
     info!("Expected SHA256: {expected_hash}");
 
     // Download binary archive
-    let archive_data = download_binary(&http, &tag, target, token_ref).await?;
+    let archive_data = download_binary(&http, target, token_ref, &assets).await?;
 
     // Verify checksum of the archive
     let actual_hash = sha256_hex(&archive_data);
