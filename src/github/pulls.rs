@@ -186,24 +186,8 @@ impl Client {
     }
 
     pub async fn fetch_pr_diff(&self, number: u64) -> Result<String> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls/{number}",
-            self.owner, self.repo
-        );
-
-        let response = self
-            .octocrab
-            ._get(&url)
-            .await
-            .with_context(|| format!("Failed to fetch diff for PR #{number}"))?;
-
-        let text = self
-            .octocrab
-            .body_to_string(response)
-            .await
-            .with_context(|| format!("Failed to read diff body for PR #{number}"))?;
-
-        Ok(text)
+        // Use the raw diff endpoint for actual unified diff content
+        self.fetch_pr_diff_raw(number).await
     }
 
     /// Fetch the raw unified diff for a PR

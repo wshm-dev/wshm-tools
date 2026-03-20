@@ -61,9 +61,7 @@ async fn sync_issues(gh: &Client, db: &Database, since: Option<&str>) -> Result<
     let issues = gh.fetch_issues(since).await?;
     let count = issues.len();
 
-    for issue in &issues {
-        db.upsert_issue(issue)?;
-    }
+    db.batch_upsert_issues(&issues)?;
 
     let now = Utc::now().to_rfc3339();
     db.update_sync_entry("issues", &now, None)?;
@@ -90,9 +88,7 @@ async fn sync_pulls(gh: &Client, db: &Database) -> Result<()> {
         }
     }
 
-    for pr in &pulls {
-        db.upsert_pull(pr)?;
-    }
+    db.batch_upsert_pulls(&pulls)?;
 
     let now = Utc::now().to_rfc3339();
     db.update_sync_entry("pulls", &now, None)?;

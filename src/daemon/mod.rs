@@ -98,8 +98,9 @@ pub async fn run(config: Config, args: DaemonArgs) -> Result<()> {
     // Spawn the HTTP server (unless --no-server)
     let server_handle = if !args.no_server {
         let server_state = Arc::clone(&state);
+        let server_tx = tx.clone();
         Some(tokio::spawn(async move {
-            if let Err(e) = server::run(server_state, tx, &bind, secret.as_deref()).await {
+            if let Err(e) = server::run(server_state, server_tx, &bind, secret.as_deref()).await {
                 tracing::error!("Server error: {e}");
             }
         }))
@@ -110,19 +111,37 @@ pub async fn run(config: Config, args: DaemonArgs) -> Result<()> {
 
     info!("Daemon running. Press Ctrl+C to stop.");
 
-    // Wait for shutdown signal
-    tokio::signal::ctrl_c().await?;
+    // Wait for SIGINT or SIGTERM
+    let shutdown = async {
+        tokio::signal::ctrl_c().await.ok();
+    };
+    #[cfg(unix)]
+    let shutdown = async {
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("Failed to register SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = sigterm.recv() => {}
+        }
+    };
+    shutdown.await;
     info!("Shutdown signal received, stopping...");
 
-    // Abort spawned tasks
     if let Some(h) = server_handle {
         h.abort();
     }
     if let Some(h) = poller_handle {
         h.abort();
     }
-    processor_handle.abort();
     scheduler_handle.abort();
+    drop(tx);
+
+    let drain_timeout = std::time::Duration::from_secs(10);
+    match tokio::time::timeout(drain_timeout, processor_handle).await {
+        Ok(_) => info!("Processor drained cleanly."),
+        Err(_) => warn!("Processor did not drain within {}s.", drain_timeout.as_secs()),
+    }
 
     info!("Daemon stopped.");
     Ok(())
@@ -221,8 +240,9 @@ pub async fn run_multi(global: GlobalConfig, args: DaemonArgs) -> Result<()> {
     // Spawn the HTTP server (unless --no-server)
     let server_handle = if !args.no_server {
         let server_multi = Arc::clone(&multi);
+        let server_tx = tx.clone();
         Some(tokio::spawn(async move {
-            if let Err(e) = server::run_multi(server_multi, tx, &bind, secret.as_deref()).await {
+            if let Err(e) = server::run_multi(server_multi, server_tx, &bind, secret.as_deref()).await {
                 tracing::error!("Server error: {e}");
             }
         }))
@@ -253,9 +273,24 @@ pub async fn run_multi(global: GlobalConfig, args: DaemonArgs) -> Result<()> {
         multi.repos.len()
     );
 
-    tokio::signal::ctrl_c().await?;
+    // Wait for SIGINT (Ctrl+C) or SIGTERM (systemd/docker)
+    let shutdown = async {
+        tokio::signal::ctrl_c().await.ok();
+    };
+    #[cfg(unix)]
+    let shutdown = async {
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("Failed to register SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = sigterm.recv() => {}
+        }
+    };
+    shutdown.await;
     info!("Shutdown signal received, stopping...");
 
+    // Stop accepting new events: abort server, pollers, schedulers, update
     if let Some(h) = server_handle {
         h.abort();
     }
@@ -268,7 +303,18 @@ pub async fn run_multi(global: GlobalConfig, args: DaemonArgs) -> Result<()> {
     for h in scheduler_handles {
         h.abort();
     }
-    processor_handle.abort();
+
+    // Drop the sender so the processor's recv() returns None and it can drain in-flight tasks
+    drop(tx);
+
+    // Give the processor up to 10s to finish in-flight events
+    let drain_timeout = std::time::Duration::from_secs(10);
+    match tokio::time::timeout(drain_timeout, processor_handle).await {
+        Ok(_) => info!("Processor drained cleanly."),
+        Err(_) => {
+            warn!("Processor did not drain within {}s, aborting.", drain_timeout.as_secs());
+        }
+    }
 
     info!("Multi-repo daemon stopped.");
     Ok(())

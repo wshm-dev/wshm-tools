@@ -66,6 +66,20 @@ impl Database {
         })
     }
 
+    pub fn batch_upsert_pulls(&self, pulls: &[PullRequest]) -> Result<()> {
+        if pulls.is_empty() {
+            return Ok(());
+        }
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            for pr in pulls {
+                upsert_pull(&tx, pr)?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
     pub fn get_pull(&self, number: u64) -> Result<Option<PullRequest>> {
         self.with_conn(|conn| get_pull(conn, number))
     }

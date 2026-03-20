@@ -39,7 +39,7 @@ impl Database {
         let conn = Connection::open(path)
             .with_context(|| format!("Failed to open database: {}", path.display()))?;
 
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;")?;
 
         let db = Self {
             conn: Mutex::new(conn),
@@ -62,7 +62,7 @@ impl Database {
     }
 
     fn migrate(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         schema::run_migrations(&conn)
     }
 
@@ -70,7 +70,7 @@ impl Database {
     where
         F: FnOnce(&Connection) -> Result<T>,
     {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         f(&conn)
     }
 }

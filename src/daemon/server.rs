@@ -29,6 +29,10 @@ pub async fn run(
     bind: &str,
     secret: Option<&str>,
 ) -> Result<()> {
+    if secret.is_none() {
+        warn!("No webhook secret configured — webhook endpoint is unauthenticated! Set WSHM_WEBHOOK_SECRET or [daemon].webhook_secret");
+    }
+
     let state = Arc::new(ServerState {
         daemon,
         tx,

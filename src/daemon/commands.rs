@@ -196,13 +196,29 @@ pub async fn execute(
             }
 
             // Check if the commenter is authorized
+            let user = triggered_by.unwrap_or("unknown");
             if !config.fix.allowed_users.is_empty() {
-                let user = triggered_by.unwrap_or("unknown");
                 if !config.fix.allowed_users.iter().any(|u| u == user) {
                     return Ok(format!(
                         "User `{user}` is not authorized to trigger auto-fix. Allowed: {}",
                         config.fix.allowed_users.join(", ")
                     ));
+                }
+            } else if config.fix.trusted_authors_only {
+                // Fallback: check if the commenter (not the issue author) is a collaborator
+                match gh.is_collaborator(user).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Ok(format!(
+                            "User `{user}` is not a repo collaborator. Only collaborators can trigger auto-fix."
+                        ));
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to check collaborator status for {user}: {e}");
+                        return Ok(format!(
+                            "Could not verify authorization for `{user}`. Please try again later."
+                        ));
+                    }
                 }
             }
 

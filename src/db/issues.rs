@@ -28,6 +28,20 @@ impl Database {
         })
     }
 
+    pub fn batch_upsert_issues(&self, issues: &[Issue]) -> Result<()> {
+        if issues.is_empty() {
+            return Ok(());
+        }
+        self.with_conn(|conn| {
+            let tx = conn.unchecked_transaction()?;
+            for issue in issues {
+                upsert_issue(&tx, issue)?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
     pub fn get_issue(&self, number: u64) -> Result<Option<Issue>> {
         self.with_conn(|conn| get_issue(conn, number))
     }
