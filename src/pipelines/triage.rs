@@ -99,6 +99,7 @@ pub async fn run(
     }
 
     let existing_issues = db.get_open_issues()?;
+    let open_prs = db.get_open_pulls()?;
     let mut results: Vec<TriageOutput> = Vec::with_capacity(issues.len());
 
     for issue in &issues {
@@ -110,6 +111,7 @@ pub async fn run(
             gh,
             issue,
             &existing_issues,
+            &open_prs,
             args.apply,
             exporter,
         )
@@ -167,6 +169,7 @@ async fn triage_issue(
     gh: &GhClient,
     issue: &Issue,
     existing_issues: &[Issue],
+    open_prs: &[crate::db::pulls::PullRequest],
     apply: bool,
     exporter: Option<&ExportManager>,
 ) -> Result<IssueClassification> {
@@ -180,7 +183,7 @@ async fn triage_issue(
         5,
     );
 
-    let mut user_prompt = issue_classify::build_user_prompt(issue, existing_issues);
+    let mut user_prompt = issue_classify::build_user_prompt(issue, existing_issues, open_prs);
 
     // Inject custom label definitions if configured
     let labels_prompt = config.labels_prompt();
