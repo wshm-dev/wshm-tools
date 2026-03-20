@@ -196,10 +196,9 @@ impl Client {
             self.owner, self.repo
         );
 
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self
+            .http
             .get(&url)
-            .header("User-Agent", "wshm")
             .send()
             .await
             .with_context(|| format!("Failed to fetch raw diff for PR #{number}"))?;

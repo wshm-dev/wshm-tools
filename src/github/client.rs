@@ -10,6 +10,8 @@ pub struct Client {
     pub repo: String,
     /// HTML comment marker for idempotent comment updates (from branding.name).
     pub comment_marker: String,
+    /// Shared HTTP client for raw requests (diff fetches, etc.)
+    pub http: reqwest::Client,
 }
 
 impl Client {
@@ -20,11 +22,18 @@ impl Client {
             .build()
             .context("Failed to create GitHub client")?;
 
+        let http = reqwest::Client::builder()
+            .user_agent("wshm")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .context("Failed to create HTTP client")?;
+
         Ok(Self {
             octocrab,
             owner: config.repo_owner.clone(),
             repo: config.repo_name.clone(),
             comment_marker: config.branding.comment_marker(),
+            http,
         })
     }
 

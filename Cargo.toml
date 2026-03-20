@@ -1,6 +1,6 @@
 [package]
 name = "wshm"
-version = "0.17.0"
+version = "0.17.1"
 edition = "2021"
 description = "AI-powered GitHub agent for OSS maintainers"
 license = "LicenseRef-WSHM-Source-Available"
@@ -94,3 +94,4 @@ azure_security_keyvault = { version = "0.21", optional = true }
 azure_identity = { version = "0.33", optional = true }
 google-cloud-secretmanager-v1 = { version = "1", optional = true }
 urlencoding = "2.1.3"
+futures = "0.3.32"

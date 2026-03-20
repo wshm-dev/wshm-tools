@@ -75,15 +75,26 @@ async fn sync_pulls(gh: &Client, db: &Database) -> Result<()> {
     let mut pulls = gh.fetch_pulls().await?;
     let count = pulls.len();
 
-    // Fetch mergeable status individually (GitHub only returns it on single-PR endpoint)
-    info!("Fetching mergeable status for {count} PRs...");
-    for pr in &mut pulls {
-        if pr.mergeable.is_none() {
-            match gh.fetch_pr_mergeable(pr.number).await {
-                Ok(m) => pr.mergeable = m,
-                Err(e) => {
-                    tracing::warn!("Failed to fetch mergeable for PR #{}: {e}", pr.number);
-                }
+    // Fetch mergeable status concurrently (GitHub only returns it on single-PR endpoint)
+    let needs_mergeable: Vec<(usize, u64)> = pulls
+        .iter()
+        .enumerate()
+        .filter(|(_, pr)| pr.mergeable.is_none())
+        .map(|(i, pr)| (i, pr.number))
+        .collect();
+
+    if !needs_mergeable.is_empty() {
+        info!("Fetching mergeable status for {} PRs (concurrent)...", needs_mergeable.len());
+        let results: Vec<(usize, Result<Option<bool>>)> =
+            futures::future::join_all(needs_mergeable.iter().map(|&(idx, number)| async move {
+                (idx, gh.fetch_pr_mergeable(number).await)
+            }))
+            .await;
+
+        for (idx, result) in results {
+            match result {
+                Ok(m) => pulls[idx].mergeable = m,
+                Err(e) => tracing::warn!("Failed to fetch mergeable for PR #{}: {e}", pulls[idx].number),
             }
         }
     }
