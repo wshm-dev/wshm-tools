@@ -116,6 +116,22 @@ impl Database {
         })
     }
 
+    /// Get the labels that wshm previously applied to an issue (from suggested_labels in triage_results).
+    pub fn get_wshm_applied_labels(&self, issue_number: u64) -> Result<Vec<String>> {
+        self.with_conn(|conn| {
+            let result: rusqlite::Result<String> = conn.query_row(
+                "SELECT suggested_labels FROM triage_results WHERE issue_number = ?1",
+                params![issue_number],
+                |row| row.get(0),
+            );
+            match result {
+                Ok(json) => Ok(serde_json::from_str(&json).unwrap_or_default()),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(Vec::new()),
+                Err(e) => Err(e.into()),
+            }
+        })
+    }
+
     pub fn is_triaged(&self, issue_number: u64) -> Result<bool> {
         self.with_conn(|conn| {
             let count: i64 = conn.query_row(

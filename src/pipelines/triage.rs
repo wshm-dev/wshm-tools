@@ -219,19 +219,40 @@ async fn triage_issue(
     );
 
     if apply && classification.confidence >= config.triage.auto_fix_confidence {
-        // Apply labels (include priority label if priority is set)
-        let mut labels = classification.suggested_labels.clone();
+        // Build new label set
+        let mut new_labels = classification.suggested_labels.clone();
         if let Some(ref priority) = classification.priority {
             let priority_label = format!("priority:{priority}");
-            if !labels.contains(&priority_label) {
-                labels.push(priority_label);
+            if !new_labels.contains(&priority_label) {
+                new_labels.push(priority_label);
             }
         }
-        let labels = config.filter_labels(labels);
-        if !labels.is_empty() {
-            gh.label_issue(issue.number, &labels).await?;
-            db.update_issue_labels(issue.number, &labels)?;
+        let new_labels = config.filter_labels(new_labels);
+
+        // Get labels previously applied by wshm (to know what to remove on re-triage)
+        let old_wshm_labels = db.get_wshm_applied_labels(issue.number)?;
+
+        // Labels to remove: previously applied by wshm but not in the new set
+        let to_remove: Vec<String> = old_wshm_labels
+            .iter()
+            .filter(|old| !new_labels.iter().any(|new| new.eq_ignore_ascii_case(old)))
+            .cloned()
+            .collect();
+
+        // Remove stale wshm labels from GitHub
+        for label in &to_remove {
+            if let Err(e) = gh.remove_label(issue.number, label).await {
+                tracing::warn!("Failed to remove label '{label}' from #{}: {e}", issue.number);
+            }
         }
+
+        // Add new labels on GitHub (additive, no-op if already present)
+        if !new_labels.is_empty() {
+            gh.label_issue(issue.number, &new_labels).await?;
+        }
+
+        // Update DB cache: merge (remove old wshm labels, add new ones, keep human labels)
+        db.merge_issue_labels(issue.number, &new_labels, &to_remove)?;
 
         // Auto-assign issue
         if config.assign.enabled {

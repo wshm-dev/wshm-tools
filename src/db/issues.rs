@@ -54,9 +54,26 @@ impl Database {
         self.with_conn(|conn| get_untriaged_issues(conn))
     }
 
-    pub fn update_issue_labels(&self, number: u64, labels: &[String]) -> Result<()> {
+    /// Merge new labels into the issue's existing labels in the DB cache (additive, no overwrite).
+    pub fn merge_issue_labels(&self, number: u64, add: &[String], remove: &[String]) -> Result<()> {
         self.with_conn(|conn| {
-            let labels_json = serde_json::to_string(labels)?;
+            // Read current labels
+            let current: String = conn
+                .query_row("SELECT labels FROM issues WHERE number = ?1", params![number], |row| row.get(0))
+                .unwrap_or_else(|_| "[]".to_string());
+            let mut labels: Vec<String> = serde_json::from_str(&current).unwrap_or_default();
+
+            // Remove old wshm labels
+            labels.retain(|l| !remove.iter().any(|r| r.eq_ignore_ascii_case(l)));
+
+            // Add new labels (dedup)
+            for label in add {
+                if !labels.iter().any(|l| l.eq_ignore_ascii_case(label)) {
+                    labels.push(label.clone());
+                }
+            }
+
+            let labels_json = serde_json::to_string(&labels)?;
             conn.execute(
                 "UPDATE issues SET labels = ?1 WHERE number = ?2",
                 params![labels_json, number],
