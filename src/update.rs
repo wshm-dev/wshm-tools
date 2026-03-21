@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use tracing::{info, warn};
 
-const REPO: &str = "pszymkowiak/wshm";
+const REPO: &str = "wshm-dev/wshm";
 
 /// Current version from Cargo.toml
 pub fn current_version() -> &'static str {
