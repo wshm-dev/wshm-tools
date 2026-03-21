@@ -289,7 +289,9 @@ async fn triage_issue(
                 }
             }
             "wontfix" => {
-                gh.close_issue(issue.number).await?;
+                // Do NOT auto-close on wontfix — AI classification can be manipulated
+                // by prompt injection. Leave closing to human maintainers.
+                info!("Issue #{} classified as wontfix (not auto-closing)", issue.number);
             }
             _ => {}
         }

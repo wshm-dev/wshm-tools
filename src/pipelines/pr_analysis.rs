@@ -231,7 +231,7 @@ fn format_analysis_comment(a: &PrAnalysis, config: &Config) -> String {
         return tmpl
             .replace("{type}", &a.pr_type)
             .replace("{risk}", &a.risk_level)
-            .replace("{summary}", &a.summary)
+            .replace("{summary}", &crate::pipelines::truncate(&a.summary, 500))
             .replace("{type_emoji}", type_emoji)
             .replace("{risk_emoji}", risk_emoji)
             .replace("{tests_present}", check(a.review_checklist.tests_present))
@@ -258,7 +258,7 @@ fn format_analysis_comment(a: &PrAnalysis, config: &Config) -> String {
          - [{}] Docs updated\n",
         a.pr_type,
         a.risk_level,
-        a.summary,
+        crate::pipelines::truncate(&a.summary, 500),
         check(a.review_checklist.tests_present),
         check(a.review_checklist.breaking_change),
         check(a.review_checklist.docs_updated),

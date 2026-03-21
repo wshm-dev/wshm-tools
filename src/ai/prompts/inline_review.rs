@@ -53,8 +53,12 @@ pub fn build_file_prompt(
         file_diff.to_string()
     };
 
+    let safe_title = super::issue_classify::sanitize_user_content(pr_title);
+    let safe_body = super::issue_classify::sanitize_user_content(
+        &super::issue_classify::truncate_body(pr_body, 4000),
+    );
     format!(
-        "## PR: {pr_title}\n\n{pr_body}\n\n## File: {file_path}\n\n```diff\n{truncated}\n```\n\n\
+        "## PR: {safe_title}\n\n{safe_body}\n\n## File: {file_path}\n\n```diff\n{truncated}\n```\n\n\
          Review ONLY this file. Use the exact path \"{file_path}\" in your comments."
     )
 }
@@ -72,7 +76,11 @@ pub fn build_user_prompt(pr_title: &str, pr_body: &str, diff: &str) -> String {
         diff.to_string()
     };
 
-    format!("## PR: {pr_title}\n\n{pr_body}\n\n## Diff:\n```diff\n{truncated}\n```")
+    let safe_title = super::issue_classify::sanitize_user_content(pr_title);
+    let safe_body = super::issue_classify::sanitize_user_content(
+        &super::issue_classify::truncate_body(pr_body, 4000),
+    );
+    format!("## PR: {safe_title}\n\n{safe_body}\n\n## Diff:\n```diff\n{truncated}\n```")
 }
 
 /// Split a unified diff into per-file chunks: Vec<(file_path, file_diff)>.

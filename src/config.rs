@@ -831,12 +831,10 @@ impl Config {
         self.fix.secret_env.clone()
     }
 
-    /// Filter out blacklisted labels from a list.
+    /// Filter labels: remove blacklisted ones. If [[labels]] allowlist is configured,
+    /// only allow labels that match a defined name.
     pub fn filter_labels(&self, labels: Vec<String>) -> Vec<String> {
-        if self.labels_blacklist.is_empty() {
-            return labels;
-        }
-        labels
+        let mut filtered: Vec<String> = labels
             .into_iter()
             .filter(|l| {
                 let normalized = l.replace('_', " ").to_lowercase();
@@ -845,7 +843,16 @@ impl Config {
                     b_normalized == normalized
                 })
             })
-            .collect()
+            .collect();
+
+        // If label definitions exist, enforce allowlist
+        if !self.labels.is_empty() {
+            filtered.retain(|l| {
+                self.labels.iter().any(|def| def.name.eq_ignore_ascii_case(l))
+            });
+        }
+
+        filtered
     }
 
     /// Resolve the AI model for a given pipeline.

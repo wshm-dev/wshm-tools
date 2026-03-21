@@ -140,6 +140,18 @@ async fn handle_issue(state: &DaemonState, event: &WebhookEvent) -> anyhow::Resu
     let number = event.number;
     info!("Handling issue event: number={number:?}");
 
+    // Skip if already triaged (prevents AI credit exhaustion via issue spam)
+    if let Some(n) = number {
+        if state.config.issues_blacklist.contains(&n) {
+            info!("Skipping blacklisted issue #{n}");
+            return Ok(());
+        }
+        if let Ok(true) = state.db.is_triaged(n) {
+            info!("Issue #{n} already triaged, skipping");
+            return Ok(());
+        }
+    }
+
     // Force sync issues (bypass throttle — we know there's a new event)
     gh_sync::sync_issues_now(&state.gh, &state.db).await?;
 
