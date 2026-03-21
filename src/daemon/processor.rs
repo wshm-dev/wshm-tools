@@ -193,12 +193,18 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
             info!("Skipping blacklisted PR #{n}");
             return Ok(());
         }
-        // For synchronize events, allow re-analysis (code changed).
-        // For opened events, skip if already analyzed.
-        if event.action == "opened" {
-            if let Ok(Some(_)) = state.db.get_pr_analysis(n) {
+        if let Ok(Some(analysis)) = state.db.get_pr_analysis(n) {
+            if event.action == "opened" {
                 info!("PR #{n} already analyzed, skipping");
                 return Ok(());
+            }
+            // For synchronize: throttle re-analysis (max once per 5 min)
+            if let Ok(last) = analysis.analyzed_at.parse::<chrono::DateTime<chrono::Utc>>() {
+                let elapsed = chrono::Utc::now().signed_duration_since(last);
+                if elapsed.num_minutes() < 5 {
+                    info!("PR #{n} analyzed {}s ago, throttling re-analysis", elapsed.num_seconds());
+                    return Ok(());
+                }
             }
         }
     }
