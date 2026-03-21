@@ -10,6 +10,14 @@ pub struct Config {
     #[serde(default)]
     pub github: GitHubConfig,
 
+    /// Git provider: "github" (default), "gitlab", "gitea", "azure-devops"
+    #[serde(default)]
+    pub git_provider: Option<String>,
+
+    /// Git platform URL for self-hosted (e.g. "https://gitlab.company.com")
+    #[serde(default)]
+    pub git_url: Option<String>,
+
     #[serde(default)]
     pub ai: AiConfig,
 
@@ -1135,6 +1143,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             github: GitHubConfig::default(),
+            git_provider: None,
+            git_url: None,
             ai: AiConfig::default(),
             triage: TriageConfig::default(),
             pr: PrConfig::default(),

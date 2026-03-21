@@ -10,6 +10,7 @@ mod config;
 mod daemon;
 mod db;
 mod export;
+mod git_provider;
 mod github;
 mod icm;
 mod login;
