@@ -552,6 +552,11 @@ pub struct BrandingConfig {
     #[serde(default)]
     pub triage_template: Option<String>,
 
+    /// Custom message shown when an issue is classified as a simple fix.
+    /// Set to "" to hide the message entirely.
+    #[serde(default)]
+    pub simple_fix_message: Option<String>,
+
     /// Custom PR analysis comment template (markdown/HTML).
     /// Placeholders: {type}, {risk}, {summary}, {type_emoji}, {risk_emoji},
     /// {tests_present}, {breaking_change}, {docs_updated}, {linked_issues},
@@ -569,6 +574,7 @@ impl Default for BrandingConfig {
             tagline: None,
             command_prefix: default_command_prefix(),
             footer_template: None,
+            simple_fix_message: None,
             triage_template: None,
             pr_template: None,
         }

@@ -424,12 +424,16 @@ fn format_triage_comment(c: &IssueClassification, config: &Config) -> String {
 
     if c.is_simple_fix {
         if will_auto_fix(c, config) {
-            comment.push_str("\n> 🔧 This looks like a **trivial fix** — attempting auto-fix now. A draft PR will be opened for review.\n");
+            comment.push_str("\n> This looks like a **trivial fix** — attempting auto-fix now. A draft PR will be opened for review.\n");
         } else {
-            comment.push_str(&format!(
-                "\n> 💡 This looks like a **simple fix** that could be auto-resolved. Use `{} fix` to attempt it.\n",
-                config.branding.command_prefix
-            ));
+            // Use custom message if configured, or default. Empty string hides the message.
+            let msg = config.branding.simple_fix_message.as_deref().unwrap_or(
+                "This looks like a **simple fix** that could be auto-resolved. Repo maintainers can use `{prefix} fix` to attempt it."
+            );
+            if !msg.is_empty() {
+                let msg = msg.replace("{prefix}", &config.branding.command_prefix);
+                comment.push_str(&format!("\n> {msg}\n"));
+            }
         }
     }
 
