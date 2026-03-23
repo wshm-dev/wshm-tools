@@ -14,9 +14,11 @@ pub struct NotifySummary {
     pub open_issues: usize,
     pub untriaged_issues: usize,
     pub high_priority_issues: Vec<IssueBrief>,
+    pub top_issues: Vec<IssueBrief>,
     pub open_prs: usize,
     pub unanalyzed_prs: usize,
     pub high_risk_prs: Vec<PrBrief>,
+    pub top_prs: Vec<PrBrief>,
     pub conflicts: usize,
 }
 
@@ -37,6 +39,7 @@ pub struct PrBrief {
     pub risk_level: Option<String>,
     pub ci_status: Option<String>,
     pub has_conflicts: bool,
+    pub age_days: i64,
 }
 
 /// Build a summary from the local SQLite cache.
@@ -79,16 +82,59 @@ fn build_summary(config: &Config, db: &Database) -> Result<NotifySummary> {
     // Oldest first = most urgent at the top
     high_priority_issues.sort_by(|a, b| b.age_days.cmp(&a.age_days));
 
+    // Top 10 issues to do — sorted by priority (critical > high > medium > low) then oldest first
+    let priority_rank = |p: Option<&str>| match p {
+        Some("critical") => 0,
+        Some("high") => 1,
+        Some("medium") => 2,
+        Some("low") => 3,
+        _ => 4,
+    };
+    let mut top_issues = Vec::new();
+    for issue in &open_issues {
+        let triage = db.get_triage_result(issue.number).ok().flatten();
+        let age_days = chrono::DateTime::parse_from_rfc3339(&issue.created_at)
+            .map(|dt| (now - dt.with_timezone(&chrono::Utc)).num_days())
+            .unwrap_or(0);
+        top_issues.push(IssueBrief {
+            number: issue.number,
+            title: crate::pipelines::truncate(&issue.title, 80),
+            priority: triage.as_ref().and_then(|t| t.priority.clone()),
+            category: triage.as_ref().map(|t| t.category.clone()),
+            labels: issue.labels.clone(),
+            age_days,
+        });
+    }
+    top_issues.sort_by(|a, b| {
+        priority_rank(a.priority.as_deref())
+            .cmp(&priority_rank(b.priority.as_deref()))
+            .then(b.age_days.cmp(&a.age_days))
+    });
+    top_issues.truncate(10);
+
     // Collect high-risk PRs or PRs with conflicts
     let mut high_risk_prs = Vec::new();
+    let mut top_prs = Vec::new();
     for pr in &open_pulls {
         let analysis = db.get_pr_analysis(pr.number).ok().flatten();
+        let has_conflicts = pr.mergeable == Some(false);
+        let age_days = chrono::DateTime::parse_from_rfc3339(&pr.created_at)
+            .map(|dt| (now - dt.with_timezone(&chrono::Utc)).num_days())
+            .unwrap_or(0);
+
+        let brief = PrBrief {
+            number: pr.number,
+            title: crate::pipelines::truncate(&pr.title, 80),
+            risk_level: analysis.as_ref().map(|a| a.risk_level.clone()),
+            ci_status: pr.ci_status.clone(),
+            has_conflicts,
+            age_days,
+        };
+
         let is_high_risk = analysis
             .as_ref()
             .map(|a| a.risk_level == "high")
             .unwrap_or(false);
-        let has_conflicts = pr.mergeable == Some(false);
-
         if is_high_risk || has_conflicts {
             high_risk_prs.push(PrBrief {
                 number: pr.number,
@@ -96,9 +142,19 @@ fn build_summary(config: &Config, db: &Database) -> Result<NotifySummary> {
                 risk_level: analysis.map(|a| a.risk_level),
                 ci_status: pr.ci_status.clone(),
                 has_conflicts,
+                age_days,
             });
         }
+
+        top_prs.push(brief);
     }
+    // Sort PRs: conflicts first, then oldest first
+    top_prs.sort_by(|a, b| {
+        b.has_conflicts
+            .cmp(&a.has_conflicts)
+            .then(b.age_days.cmp(&a.age_days))
+    });
+    top_prs.truncate(10);
 
     Ok(NotifySummary {
         repo: config.repo_slug(),
@@ -106,9 +162,11 @@ fn build_summary(config: &Config, db: &Database) -> Result<NotifySummary> {
         open_issues: open_issues.len(),
         untriaged_issues: untriaged.len(),
         high_priority_issues,
+        top_issues,
         open_prs: open_pulls.len(),
         unanalyzed_prs: unanalyzed.len(),
         high_risk_prs,
+        top_prs,
         conflicts,
     })
 }
@@ -176,6 +234,48 @@ fn format_discord(summary: &NotifySummary) -> serde_json::Value {
             .collect();
         fields.push(serde_json::json!({
             "name": "Attention PRs",
+            "value": lines.join("\n"),
+        }));
+    }
+
+    if !summary.top_issues.is_empty() {
+        let lines: Vec<String> = summary
+            .top_issues
+            .iter()
+            .map(|i| {
+                let prio = i.priority.as_deref().unwrap_or("-");
+                let cat = i.category.as_deref().unwrap_or("-");
+                let age = if i.age_days > 0 {
+                    format!(" ({}d)", i.age_days)
+                } else {
+                    String::new()
+                };
+                format!("`#{}` {}/{}{} — {}", i.number, prio, cat, age, i.title)
+            })
+            .collect();
+        fields.push(serde_json::json!({
+            "name": "Issues TODO",
+            "value": lines.join("\n"),
+        }));
+    }
+
+    if !summary.top_prs.is_empty() {
+        let lines: Vec<String> = summary
+            .top_prs
+            .iter()
+            .map(|p| {
+                let risk = p.risk_level.as_deref().unwrap_or("-");
+                let age = if p.age_days > 0 {
+                    format!(" ({}d)", p.age_days)
+                } else {
+                    String::new()
+                };
+                let conflict = if p.has_conflicts { " CONFLICT" } else { "" };
+                format!("`#{}` {}{}{} — {}", p.number, risk, conflict, age, p.title)
+            })
+            .collect();
+        fields.push(serde_json::json!({
+            "name": "PRs TODO",
             "value": lines.join("\n"),
         }));
     }
@@ -250,7 +350,7 @@ fn format_slack(summary: &NotifySummary) -> serde_json::Value {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": format!("*🚨 Action Required*\n{}", lines.join("\n")),
+                "text": format!("*Action Required*\n{}", lines.join("\n")),
             }
         }));
     }
@@ -278,6 +378,42 @@ fn format_slack(summary: &NotifySummary) -> serde_json::Value {
                 "type": "mrkdwn",
                 "text": format!("*Attention PRs*\n{}", lines.join("\n")),
             }
+        }));
+    }
+
+    if !summary.top_issues.is_empty() {
+        blocks.push(serde_json::json!({ "type": "divider" }));
+        let lines: Vec<String> = summary
+            .top_issues
+            .iter()
+            .map(|i| {
+                let prio = i.priority.as_deref().unwrap_or("-");
+                let cat = i.category.as_deref().unwrap_or("-");
+                let age = if i.age_days > 0 { format!(" ({}d)", i.age_days) } else { String::new() };
+                format!("`#{}` {}/{}{} — {}", i.number, prio, cat, age, i.title)
+            })
+            .collect();
+        blocks.push(serde_json::json!({
+            "type": "section",
+            "text": { "type": "mrkdwn", "text": format!("*Issues TODO*\n{}", lines.join("\n")) }
+        }));
+    }
+
+    if !summary.top_prs.is_empty() {
+        blocks.push(serde_json::json!({ "type": "divider" }));
+        let lines: Vec<String> = summary
+            .top_prs
+            .iter()
+            .map(|p| {
+                let risk = p.risk_level.as_deref().unwrap_or("-");
+                let age = if p.age_days > 0 { format!(" ({}d)", p.age_days) } else { String::new() };
+                let conflict = if p.has_conflicts { " CONFLICT" } else { "" };
+                format!("`#{}` {}{}{} — {}", p.number, risk, conflict, age, p.title)
+            })
+            .collect();
+        blocks.push(serde_json::json!({
+            "type": "section",
+            "text": { "type": "mrkdwn", "text": format!("*PRs TODO*\n{}", lines.join("\n")) }
         }));
     }
 
@@ -349,6 +485,42 @@ fn format_teams(summary: &NotifySummary) -> serde_json::Value {
         body.push(serde_json::json!({
             "type": "TextBlock",
             "text": format!("**Attention PRs**\n\n{}", lines.join("\n\n")),
+            "wrap": true,
+        }));
+    }
+
+    if !summary.top_issues.is_empty() {
+        let lines: Vec<String> = summary
+            .top_issues
+            .iter()
+            .map(|i| {
+                let prio = i.priority.as_deref().unwrap_or("-");
+                let cat = i.category.as_deref().unwrap_or("-");
+                let age = if i.age_days > 0 { format!(" ({}d)", i.age_days) } else { String::new() };
+                format!("- `#{}` {}/{}{} — {}", i.number, prio, cat, age, i.title)
+            })
+            .collect();
+        body.push(serde_json::json!({
+            "type": "TextBlock",
+            "text": format!("**Issues TODO**\n\n{}", lines.join("\n\n")),
+            "wrap": true,
+        }));
+    }
+
+    if !summary.top_prs.is_empty() {
+        let lines: Vec<String> = summary
+            .top_prs
+            .iter()
+            .map(|p| {
+                let risk = p.risk_level.as_deref().unwrap_or("-");
+                let age = if p.age_days > 0 { format!(" ({}d)", p.age_days) } else { String::new() };
+                let conflict = if p.has_conflicts { " CONFLICT" } else { "" };
+                format!("- `#{}` {}{}{} — {}", p.number, risk, conflict, age, p.title)
+            })
+            .collect();
+        body.push(serde_json::json!({
+            "type": "TextBlock",
+            "text": format!("**PRs TODO**\n\n{}", lines.join("\n\n")),
             "wrap": true,
         }));
     }
