@@ -42,7 +42,7 @@
 - **Auto-Assign** — Weighted random assignment of maintainers to issues and PRs
 - **Labels Blacklist** — Prevent specific labels from ever being applied
 - **Periodic Retriage** — Re-evaluate stale triage results on a schedule
-- **Notifications** — Daily priority summary to Discord, Slack, Teams, or any webhook
+- **Notifications** — Daily roadmap to Discord, Slack, Teams, or webhook: top 10 issues and PRs to do, sorted by priority and age
 - **Dashboard & Reports** — HTML dashboards and markdown/PDF reports
 - **Fully Customizable** — Templates for every comment, branding, and behavior
 

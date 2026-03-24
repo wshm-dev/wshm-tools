@@ -32,7 +32,7 @@ wshm est un outil CLI + GitHub Action qui agit comme un agent autonome de mainte
 - **Auto-assignation** — Attribution ponderee des maintainers aux issues et PRs
 - **Blacklist de labels** — Empecher l'application de certains labels
 - **Retriage periodique** — Re-evaluation des triages obsoletes selon un intervalle
-- **Notifications** — Resume quotidien des priorites vers Discord, Slack, Teams ou webhook
+- **Notifications** — Roadmap quotidienne vers Discord, Slack, Teams ou webhook : top 10 issues et PRs a faire, tries par priorite et anciennete
 - **Dashboard et rapports** — Dashboard HTML et rapports markdown/PDF
 - **Entierement personnalisable** — Templates pour chaque commentaire et branding
 
