@@ -165,9 +165,13 @@ pub fn run(args: &LoginArgs) -> Result<()> {
         return show_status();
     }
 
-    let do_all = !args.github && !args.ai && !args.claude;
+    let do_all = !args.github && !args.ai && !args.claude && !args.license;
 
     ensure_gitignore();
+
+    if do_all || args.license {
+        crate::license::login()?;
+    }
 
     if do_all || args.github {
         login_github()?;

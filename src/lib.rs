@@ -6,6 +6,7 @@ pub mod db;
 pub mod export;
 pub mod github;
 pub mod icm;
+pub mod license;
 pub mod login;
 pub mod pipelines;
 pub mod update;

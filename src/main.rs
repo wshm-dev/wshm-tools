@@ -308,7 +308,18 @@ async fn main() -> Result<()> {
             }
             if let Some(ref config_path) = args.config {
                 // Multi-repo mode
-                let global = config::GlobalConfig::load(config_path)?;
+                let mut global = config::GlobalConfig::load(config_path)?;
+
+                // License check: limit repos if no valid license
+                let lic = wshm::license::check();
+                if let Some(limit) = lic.repo_limit() {
+                    if global.repos.len() > limit {
+                        eprintln!("⚠️  {}", lic.message);
+                        eprintln!("   Scanning only the first {} repo(s).", limit);
+                        global.repos.truncate(limit);
+                    }
+                }
+
                 daemon::run_multi(global, args.clone()).await?;
             } else {
                 // Single-repo mode (backward compatible)

@@ -287,6 +287,10 @@ pub struct LoginArgs {
     #[arg(long)]
     pub claude: bool,
 
+    /// Only setup license key
+    #[arg(long)]
+    pub license: bool,
+
     /// Show current authentication status
     #[arg(long)]
     pub status: bool,
