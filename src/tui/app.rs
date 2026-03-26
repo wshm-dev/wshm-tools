@@ -58,6 +58,14 @@ pub struct ActionItem {
     pub age_days: i64,
     pub is_simple_fix: bool,
     pub has_pr: bool,
+    pub comments: Vec<CommentItem>,
+}
+
+#[derive(Clone)]
+pub struct CommentItem {
+    pub author: String,
+    pub body: String,
+    pub created_at: String,
 }
 
 pub struct ActionDetailPopup {
@@ -550,6 +558,7 @@ impl App {
                     age_days,
                     is_simple_fix,
                     has_pr: false,
+                    comments: Vec::new(),
                 })
             });
 
@@ -584,7 +593,27 @@ impl App {
     }
 
     pub fn open_action_detail(&mut self) {
-        if let Some(item) = self.actions.get(self.scroll_offset) {
+        if let Some(item) = self.actions.get_mut(self.scroll_offset) {
+            // Lazy load comments
+            if item.comments.is_empty() {
+                let db_path = PathBuf::from(&item.repo_path).join(".wshm").join("state.db");
+                if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                    if let Ok(mut stmt) = conn.prepare(
+                        "SELECT author, body, created_at FROM comments WHERE issue_number = ?1 ORDER BY created_at ASC"
+                    ) {
+                        if let Ok(rows) = stmt.query_map(rusqlite::params![item.issue_number], |row| {
+                            Ok(CommentItem {
+                                author: row.get::<_, String>(0).unwrap_or_default(),
+                                body: row.get::<_, String>(1).unwrap_or_default(),
+                                created_at: row.get::<_, String>(2).unwrap_or_default(),
+                            })
+                        }) {
+                            item.comments = rows.flatten().collect();
+                        }
+                    }
+                }
+            }
+
             self.action_detail = Some(ActionDetailPopup {
                 item: item.clone(),
                 scroll: 0,

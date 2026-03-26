@@ -829,6 +829,29 @@ fn draw_action_detail_popup(f: &mut Frame, detail: &app::ActionDetailPopup) {
         }
     }
 
+    // Comments
+    if !item.comments.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            format!("Comments ({})", item.comments.len()),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        )));
+        for comment in &item.comments {
+            let time = if comment.created_at.len() > 16 { &comment.created_at[..16] } else { &comment.created_at };
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {} ", comment.author), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(time, Style::default().fg(Color::DarkGray)),
+            ]));
+            for line in comment.body.lines().take(10) {
+                lines.push(Line::from(format!("    {line}")));
+            }
+            if comment.body.lines().count() > 10 {
+                lines.push(Line::from(Span::styled("    ...", Style::default().fg(Color::DarkGray))));
+            }
+        }
+    }
+
     let paragraph = Paragraph::new(lines)
         .scroll((detail.scroll as u16, 0))
         .block(
