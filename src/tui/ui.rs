@@ -40,6 +40,11 @@ pub fn draw(f: &mut Frame, app: &App) {
         Tab::Activity => draw_activity(f, app, chunks[2]),
     }
 
+    // Action detail popup
+    if let Some(ref detail) = app.action_detail {
+        draw_action_detail_popup(f, detail);
+    }
+
     // Settings popup overlay
     if let Some(ref settings) = app.settings_popup {
         draw_settings_popup(f, settings, &app.input_mode, &app.input_buffer);
@@ -546,8 +551,10 @@ fn draw_action_plan(f: &mut Frame, app: &App, area: Rect) {
     let rows: Vec<Row> = app
         .actions
         .iter()
+        .enumerate()
         .skip(app.scroll_offset)
-        .map(|item| {
+        .map(|(i, item)| {
+            let selected = i == app.scroll_offset;
             let (pri_icon, pri_color) = match item.priority.as_str() {
                 "critical" => ("🔴", Color::Red),
                 "high" => ("🟠", Color::LightRed),
@@ -569,6 +576,11 @@ fn draw_action_plan(f: &mut Frame, app: &App, area: Rect) {
             let pr = if item.has_pr { "✓" } else if item.is_simple_fix { "⚡" } else { "" };
             let repo_short = item.repo.split('/').last().unwrap_or(&item.repo);
 
+            let row_style = if selected {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            };
             Row::new(vec![
                 Cell::from(pri_icon).style(Style::default().fg(pri_color)),
                 Cell::from(repo_short.to_string()).style(Style::default().fg(Color::DarkGray)),
@@ -577,7 +589,7 @@ fn draw_action_plan(f: &mut Frame, app: &App, area: Rect) {
                 Cell::from(age),
                 Cell::from(pr).style(Style::default().fg(Color::Green)),
                 Cell::from(item.title.chars().take(60).collect::<String>()),
-            ])
+            ]).style(row_style)
         })
         .collect();
 
@@ -728,6 +740,114 @@ fn draw_repos(f: &mut Frame, app: &App, area: Rect) {
         ));
         f.render_widget(help, layout[1]);
     }
+}
+
+fn draw_action_detail_popup(f: &mut Frame, detail: &app::ActionDetailPopup) {
+    let area = f.area();
+    let popup = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(5), Constraint::Percentage(90), Constraint::Percentage(5)])
+        .split(area);
+    let popup = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(10), Constraint::Percentage(80), Constraint::Percentage(10)])
+        .split(popup[1]);
+    let area = popup[1];
+
+    f.render_widget(ratatui::widgets::Clear, area);
+
+    let item = &detail.item;
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Header
+    lines.push(Line::from(vec![
+        Span::styled(format!("#{} ", item.issue_number), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(&item.title, Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    lines.push(Line::from(""));
+
+    // Meta
+    let pri_color = match item.priority.as_str() {
+        "critical" => Color::Red,
+        "high" => Color::LightRed,
+        "medium" => Color::Yellow,
+        _ => Color::Green,
+    };
+    lines.push(Line::from(vec![
+        Span::styled("Repo:     ", Style::default().fg(Color::DarkGray)),
+        Span::raw(&item.repo),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Priority: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(&item.priority, Style::default().fg(pri_color)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Category: ", Style::default().fg(Color::DarkGray)),
+        Span::raw(&item.category),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Age:      ", Style::default().fg(Color::DarkGray)),
+        Span::raw(format!("{} days", item.age_days)),
+    ]));
+    if !item.labels.is_empty() {
+        lines.push(Line::from(vec![
+            Span::styled("Labels:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(&item.labels, Style::default().fg(Color::Magenta)),
+        ]));
+    }
+    if item.has_pr {
+        lines.push(Line::from(vec![
+            Span::styled("PR:       ", Style::default().fg(Color::DarkGray)),
+            Span::styled("✓ Has linked PR", Style::default().fg(Color::Green)),
+        ]));
+    }
+    if item.is_simple_fix {
+        lines.push(Line::from(vec![
+            Span::styled("Fix:      ", Style::default().fg(Color::DarkGray)),
+            Span::styled("⚡ Simple fix", Style::default().fg(Color::Yellow)),
+        ]));
+    }
+
+    // AI Summary
+    if !item.summary.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled("AI Summary", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))));
+        for line in item.summary.lines() {
+            lines.push(Line::from(format!("  {line}")));
+        }
+    }
+
+    // Body
+    if !item.body.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled("Description", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))));
+        for line in item.body.lines().take(30) {
+            lines.push(Line::from(format!("  {line}")));
+        }
+        if item.body.lines().count() > 30 {
+            lines.push(Line::from(Span::styled("  ... (truncated)", Style::default().fg(Color::DarkGray))));
+        }
+    }
+
+    let paragraph = Paragraph::new(lines)
+        .scroll((detail.scroll as u16, 0))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(format!(" {} #{} ", item.repo, item.issue_number))
+                .style(Style::default().bg(Color::Black)),
+        );
+
+    f.render_widget(paragraph, area);
+
+    // Help
+    let help_area = Rect::new(area.x + 1, area.y + area.height - 2, area.width - 2, 1);
+    let help = Paragraph::new(Span::styled(
+        " ↑↓:scroll  Esc/Enter:close",
+        Style::default().fg(Color::DarkGray),
+    ));
+    f.render_widget(help, help_area);
 }
 
 fn draw_settings_popup(f: &mut Frame, settings: &app::RepoSettings, input_mode: &Option<InputMode>, input_buffer: &str) {

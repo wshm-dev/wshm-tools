@@ -47,13 +47,22 @@ impl Tab {
 #[derive(Clone)]
 pub struct ActionItem {
     pub repo: String,
+    pub repo_path: String,
     pub issue_number: u64,
     pub title: String,
+    pub body: String,
     pub category: String,
     pub priority: String,
+    pub summary: String,
+    pub labels: String,
     pub age_days: i64,
     pub is_simple_fix: bool,
     pub has_pr: bool,
+}
+
+pub struct ActionDetailPopup {
+    pub item: ActionItem,
+    pub scroll: usize,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -143,6 +152,7 @@ pub struct App {
     pub input_tmp_slug: String,
     pub confirm_delete: bool,
     pub settings_popup: Option<RepoSettings>,
+    pub action_detail: Option<ActionDetailPopup>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -228,6 +238,7 @@ impl App {
             input_tmp_slug: String::new(),
             confirm_delete: false,
             settings_popup: None,
+            action_detail: None,
         };
         app.load_repos();
         app.load_actions();
@@ -481,8 +492,8 @@ impl App {
 
             // Get open issues with triage results, ordered by priority
             let mut stmt = match conn.prepare(
-                "SELECT i.number, i.title, i.created_at,
-                        t.category, t.priority, t.is_simple_fix
+                "SELECT i.number, i.title, i.created_at, i.body, i.labels,
+                        t.category, t.priority, t.is_simple_fix, t.summary
                  FROM issues i
                  LEFT JOIN triage_results t ON i.number = t.issue_number
                  WHERE i.state = 'open'
@@ -510,27 +521,35 @@ impl App {
                 })
                 .unwrap_or_default();
 
+            let repo_path = repo.path.clone();
             let rows = stmt.query_map([], |row| {
                 let number: u64 = row.get(0)?;
                 let title: String = row.get(1)?;
                 let created_at: String = row.get::<_, String>(2).unwrap_or_default();
-                let category: String = row.get::<_, String>(3).unwrap_or_else(|_| "untriaged".into());
-                let priority: String = row.get::<_, String>(4).unwrap_or_else(|_| "–".into());
-                let is_simple_fix: bool = row.get::<_, bool>(5).unwrap_or(false);
+                let body: String = row.get::<_, String>(3).unwrap_or_default();
+                let labels: String = row.get::<_, String>(4).unwrap_or_default();
+                let category: String = row.get::<_, String>(5).unwrap_or_else(|_| "untriaged".into());
+                let priority: String = row.get::<_, String>(6).unwrap_or_else(|_| "–".into());
+                let is_simple_fix: bool = row.get::<_, bool>(7).unwrap_or(false);
+                let summary: String = row.get::<_, String>(8).unwrap_or_default();
 
                 let age_days = chrono::DateTime::parse_from_rfc3339(&created_at)
                     .map(|d| (now - d.with_timezone(&chrono::Utc)).num_days())
                     .unwrap_or(0);
 
                 Ok(ActionItem {
-                    repo: String::new(), // filled below
+                    repo: String::new(),
+                    repo_path: String::new(),
                     issue_number: number,
                     title,
+                    body,
                     category,
                     priority,
+                    summary,
+                    labels,
                     age_days,
                     is_simple_fix,
-                    has_pr: false, // filled below
+                    has_pr: false,
                 })
             });
 
@@ -538,6 +557,7 @@ impl App {
                 for row in rows.flatten() {
                     let mut item = row;
                     item.repo = repo.slug.clone();
+                    item.repo_path = repo_path.clone();
                     item.has_pr = pr_issues.contains(&item.issue_number);
                     items.push(item);
                 }
@@ -561,6 +581,31 @@ impl App {
         });
 
         self.actions = items;
+    }
+
+    pub fn open_action_detail(&mut self) {
+        if let Some(item) = self.actions.get(self.scroll_offset) {
+            self.action_detail = Some(ActionDetailPopup {
+                item: item.clone(),
+                scroll: 0,
+            });
+        }
+    }
+
+    pub fn close_action_detail(&mut self) {
+        self.action_detail = None;
+    }
+
+    pub fn action_detail_scroll_up(&mut self) {
+        if let Some(ref mut d) = self.action_detail {
+            d.scroll = d.scroll.saturating_sub(1);
+        }
+    }
+
+    pub fn action_detail_scroll_down(&mut self) {
+        if let Some(ref mut d) = self.action_detail {
+            d.scroll += 1;
+        }
     }
 
     /// Load repos from global.toml

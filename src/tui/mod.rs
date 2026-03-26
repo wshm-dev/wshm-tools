@@ -91,6 +91,17 @@ fn run_loop(
                         continue;
                     }
 
+                    // Action detail popup
+                    if app.action_detail.is_some() {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Enter => app.close_action_detail(),
+                            KeyCode::Up | KeyCode::Char('k') => app.action_detail_scroll_up(),
+                            KeyCode::Down | KeyCode::Char('j') => app.action_detail_scroll_down(),
+                            _ => {}
+                        }
+                        continue;
+                    }
+
                     // Settings popup intercepts keys
                     if app.settings_popup.is_some() {
                         match key.code {
@@ -117,6 +128,8 @@ fn run_loop(
                         KeyCode::Enter => {
                             if app.active_tab == app::Tab::Repos {
                                 app.open_settings();
+                            } else if app.active_tab == app::Tab::Action {
+                                app.open_action_detail();
                             }
                         }
                         KeyCode::Char(' ') if app.active_tab == app::Tab::Repos => {
