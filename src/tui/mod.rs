@@ -23,9 +23,10 @@ pub async fn run(config: &Config, db: &Database) -> Result<()> {
 
     // Create app state
     let mut app = app::App::new(config, db)?;
+    let mut last_log_refresh = std::time::Instant::now();
 
     // Main loop
-    let result = run_loop(&mut terminal, &mut app, db);
+    let result = run_loop(&mut terminal, &mut app, db, &mut last_log_refresh);
 
     // Restore terminal
     disable_raw_mode()?;
@@ -43,9 +44,18 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut app::App,
     db: &Database,
+    last_log_refresh: &mut std::time::Instant,
 ) -> Result<()> {
     loop {
         terminal.draw(|f| ui::draw(f, app))?;
+
+        // Auto-refresh logs every 5 seconds when on Activity tab
+        if app.active_tab == app::Tab::Activity
+            && last_log_refresh.elapsed() > std::time::Duration::from_secs(5)
+        {
+            app.refresh_logs();
+            *last_log_refresh = std::time::Instant::now();
+        }
 
         let timeout = std::time::Duration::from_millis(200);
         if event::poll(timeout)? {

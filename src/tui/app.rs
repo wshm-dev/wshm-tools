@@ -7,6 +7,13 @@ use crate::db::pulls::PullRequest;
 use crate::db::triage::TriageResultRow;
 use crate::db::Database;
 
+#[derive(Clone, Debug)]
+pub struct LogEntry {
+    pub timestamp: String,
+    pub level: String, // INFO, WARN, ERROR
+    pub message: String,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum Tab {
     Issues,
@@ -108,6 +115,7 @@ pub struct App {
     pub conflict_count: usize,
     pub stats: Stats,
     pub activity: Vec<TriageResultRow>,
+    pub logs: Vec<LogEntry>,
 }
 
 impl App {
@@ -137,6 +145,7 @@ impl App {
                 avg_pr_age_days: 0,
             },
             activity: Vec::new(),
+            logs: Vec::new(),
         };
         app.refresh(db)?;
         Ok(app)
@@ -176,6 +185,9 @@ impl App {
 
         // Load recent activity
         self.activity = db.recent_activity(50).unwrap_or_default();
+
+        // Load daemon logs
+        self.refresh_logs();
 
         self.scroll_offset = 0;
         Ok(())
@@ -362,7 +374,112 @@ impl App {
             Tab::PullRequests => self.pulls.len(),
             Tab::Queue => self.pulls.len(),
             Tab::Stats => self.stats.recent_triages.len(),
-            Tab::Activity => self.activity.len(),
+            Tab::Activity => self.logs.len(),
         }
     }
+
+    /// Load daemon logs from journalctl or build from triage data.
+    pub fn refresh_logs(&mut self) {
+        // Try journalctl first
+        if let Ok(output) = std::process::Command::new("journalctl")
+            .args(["-u", "wshm", "--no-pager", "-n", "100", "--output=short-iso"])
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let entries: Vec<LogEntry> = stdout
+                    .lines()
+                    .filter(|l| !l.starts_with("--"))
+                    .filter_map(|line| parse_journal_line(line))
+                    .collect();
+                if !entries.is_empty() {
+                    self.logs = entries;
+                    return;
+                }
+            }
+        }
+
+        // Fallback: build log from triage activity
+        self.logs = self
+            .activity
+            .iter()
+            .map(|t| {
+                let time = if t.acted_at.len() > 19 {
+                    t.acted_at[11..19].to_string()
+                } else {
+                    t.acted_at.clone()
+                };
+                LogEntry {
+                    timestamp: time,
+                    level: "INFO".into(),
+                    message: format!(
+                        "Triaged #{} → {} ({})",
+                        t.issue_number,
+                        t.category,
+                        t.priority.as_deref().unwrap_or("–")
+                    ),
+                }
+            })
+            .collect();
+    }
+}
+
+/// Parse a journalctl line into a LogEntry.
+fn parse_journal_line(line: &str) -> Option<LogEntry> {
+    // Format: "2026-03-26T08:21:47+00:00 hostname wshm[pid]: message"
+    // or:     "Mar 26 08:21:47 hostname wshm[pid]: message"
+    let msg_start = line.find("wshm[")?;
+    let after_pid = line[msg_start..].find(']')?;
+    let message = line[msg_start + after_pid + 2..].trim().to_string();
+
+    // Extract timestamp
+    let timestamp = if line.len() > 19 && line.chars().nth(4) == Some('-') {
+        // ISO format
+        line[11..19].to_string()
+    } else if line.len() > 15 {
+        // syslog format "Mar 26 08:21:47"
+        line[..15].to_string()
+    } else {
+        return None;
+    };
+
+    // Extract level from tracing output
+    let level = if message.contains("ERROR") || message.contains("error") {
+        "ERROR"
+    } else if message.contains("WARN") || message.contains("warn") {
+        "WARN"
+    } else {
+        "INFO"
+    }
+    .to_string();
+
+    // Clean tracing prefix (remove ANSI codes and "INFO wshm::module:" prefix)
+    let clean_msg = message
+        .replace("\x1b[0m", "")
+        .replace("\x1b[32m", "")
+        .replace("\x1b[33m", "")
+        .replace("\x1b[31m", "")
+        .replace("\x1b[2m", "")
+        .replace("\x1b[1m", "");
+
+    // Remove "INFO wshm::module::name:" prefix
+    let clean_msg = if let Some(idx) = clean_msg.find(": ") {
+        if clean_msg[..idx].contains("wshm::") {
+            clean_msg[idx + 2..].to_string()
+        } else {
+            clean_msg
+        }
+    } else {
+        clean_msg
+    };
+
+    if clean_msg.is_empty() {
+        return None;
+    }
+
+    Some(LogEntry {
+        timestamp,
+        level,
+        message: clean_msg,
+    })
 }

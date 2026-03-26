@@ -3,7 +3,7 @@
 # Run:   docker run -e GITHUB_TOKEN -e ANTHROPIC_API_KEY wshm daemon --poll --no-server --apply
 
 # ── Build stage ───────────────────────────────────────────────
-FROM rust:1.86-bookworm AS builder
+FROM rust:1.88-bookworm AS builder
 
 WORKDIR /build
 
