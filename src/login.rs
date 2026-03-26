@@ -169,10 +169,6 @@ pub fn run(args: &LoginArgs) -> Result<()> {
 
     ensure_gitignore();
 
-    if do_all || args.license {
-        crate::license::login()?;
-    }
-
     if do_all || args.github {
         login_github()?;
     }

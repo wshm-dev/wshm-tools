@@ -292,6 +292,9 @@ async fn main() -> Result<()> {
             }
         },
         Some(Command::Login(args)) => {
+            if !args.github && !args.ai && !args.claude || args.license {
+                wshm::license::login()?;
+            }
             login::run(args)?;
         }
         Some(Command::Update(args)) => {
