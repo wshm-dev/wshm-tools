@@ -18,6 +18,7 @@ pub struct LogEntry {
 #[derive(Clone, Copy, PartialEq)]
 pub enum Tab {
     Repos,
+    Action,
     Issues,
     PullRequests,
     Queue,
@@ -29,6 +30,7 @@ impl Tab {
     pub fn title(&self) -> &'static str {
         match self {
             Tab::Repos => "Repos",
+            Tab::Action => "Action",
             Tab::Issues => "Issues",
             Tab::PullRequests => "Pull Requests",
             Tab::Queue => "Merge Queue",
@@ -38,8 +40,20 @@ impl Tab {
     }
 
     pub fn all() -> &'static [Tab] {
-        &[Tab::Repos, Tab::Issues, Tab::PullRequests, Tab::Queue, Tab::Stats, Tab::Activity]
+        &[Tab::Repos, Tab::Action, Tab::Issues, Tab::PullRequests, Tab::Queue, Tab::Stats, Tab::Activity]
     }
+}
+
+#[derive(Clone)]
+pub struct ActionItem {
+    pub repo: String,
+    pub issue_number: u64,
+    pub title: String,
+    pub category: String,
+    pub priority: String,
+    pub age_days: i64,
+    pub is_simple_fix: bool,
+    pub has_pr: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -119,6 +133,7 @@ pub struct App {
     pub stats: Stats,
     pub activity: Vec<TriageResultRow>,
     pub logs: Vec<LogEntry>,
+    pub actions: Vec<ActionItem>,
     pub repos: Vec<RepoRow>,
     pub global_config_path: Option<PathBuf>,
     pub is_root: bool,
@@ -203,6 +218,7 @@ impl App {
             },
             activity: Vec::new(),
             logs: Vec::new(),
+            actions: Vec::new(),
             repos: Vec::new(),
             global_config_path: None,
             is_root: std::env::var("USER").unwrap_or_default() == "root",
@@ -214,6 +230,7 @@ impl App {
             settings_popup: None,
         };
         app.load_repos();
+        app.load_actions();
         app.refresh(db)?;
         Ok(app)
     }
@@ -442,8 +459,108 @@ impl App {
             Tab::Queue => self.pulls.len(),
             Tab::Stats => self.stats.recent_triages.len(),
             Tab::Repos => self.repos.len(),
+            Tab::Action => self.actions.len(),
             Tab::Activity => self.logs.len(),
         }
+    }
+
+    /// Load action items across all repos (prioritized TODO list)
+    pub fn load_actions(&mut self) {
+        let mut items = Vec::new();
+        let now = chrono::Utc::now();
+
+        for repo in &self.repos {
+            if !repo.enabled || !repo.has_wshm {
+                continue;
+            }
+            let db_path = PathBuf::from(&repo.path).join(".wshm").join("state.db");
+            let conn = match rusqlite::Connection::open(&db_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            // Get open issues with triage results, ordered by priority
+            let mut stmt = match conn.prepare(
+                "SELECT i.number, i.title, i.created_at,
+                        t.category, t.priority, t.is_simple_fix
+                 FROM issues i
+                 LEFT JOIN triage_results t ON i.number = t.issue_number
+                 WHERE i.state = 'open'
+                 ORDER BY
+                    CASE t.priority
+                        WHEN 'critical' THEN 0
+                        WHEN 'high' THEN 1
+                        WHEN 'medium' THEN 2
+                        ELSE 3
+                    END,
+                    i.created_at ASC"
+            ) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+
+            // Check which issues have linked PRs
+            let pr_issues: std::collections::HashSet<u64> = conn
+                .prepare("SELECT DISTINCT CAST(SUBSTR(title, INSTR(title, '#') + 1) AS INTEGER) FROM pull_requests WHERE state = 'open' AND title LIKE '%#%'")
+                .ok()
+                .and_then(|mut s| {
+                    s.query_map([], |row| row.get::<_, u64>(0))
+                        .ok()
+                        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                })
+                .unwrap_or_default();
+
+            let rows = stmt.query_map([], |row| {
+                let number: u64 = row.get(0)?;
+                let title: String = row.get(1)?;
+                let created_at: String = row.get::<_, String>(2).unwrap_or_default();
+                let category: String = row.get::<_, String>(3).unwrap_or_else(|_| "untriaged".into());
+                let priority: String = row.get::<_, String>(4).unwrap_or_else(|_| "–".into());
+                let is_simple_fix: bool = row.get::<_, bool>(5).unwrap_or(false);
+
+                let age_days = chrono::DateTime::parse_from_rfc3339(&created_at)
+                    .map(|d| (now - d.with_timezone(&chrono::Utc)).num_days())
+                    .unwrap_or(0);
+
+                Ok(ActionItem {
+                    repo: String::new(), // filled below
+                    issue_number: number,
+                    title,
+                    category,
+                    priority,
+                    age_days,
+                    is_simple_fix,
+                    has_pr: false, // filled below
+                })
+            });
+
+            if let Ok(rows) = rows {
+                for row in rows.flatten() {
+                    let mut item = row;
+                    item.repo = repo.slug.clone();
+                    item.has_pr = pr_issues.contains(&item.issue_number);
+                    items.push(item);
+                }
+            }
+        }
+
+        // Sort globally by priority
+        let priority_order = |p: &str| -> u8 {
+            match p {
+                "critical" => 0,
+                "high" => 1,
+                "medium" => 2,
+                "low" => 3,
+                _ => 4,
+            }
+        };
+        items.sort_by(|a, b| {
+            priority_order(&a.priority)
+                .cmp(&priority_order(&b.priority))
+                .then(b.age_days.cmp(&a.age_days))
+        });
+
+        self.actions = items;
     }
 
     /// Load repos from global.toml

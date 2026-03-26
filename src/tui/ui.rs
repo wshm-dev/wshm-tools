@@ -32,6 +32,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     match app.active_tab {
         Tab::Repos => draw_repos(f, app, chunks[2]),
+        Tab::Action => draw_action_plan(f, app, chunks[2]),
         Tab::Issues => draw_issues(f, app, chunks[2]),
         Tab::PullRequests => draw_pulls(f, app, chunks[2]),
         Tab::Queue => draw_queue(f, app, chunks[2]),
@@ -520,6 +521,95 @@ fn draw_stats_tab(f: &mut Frame, app: &App, area: Rect) {
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Recent Triages "));
     f.render_widget(recent_table, chunks[1]);
+}
+
+fn draw_action_plan(f: &mut Frame, app: &App, area: Rect) {
+    if app.actions.is_empty() {
+        let text = Paragraph::new("No action items. All clear!")
+            .block(Block::default().borders(Borders::ALL).title(" Action Plan "))
+            .style(Style::default().fg(Color::Green));
+        f.render_widget(text, area);
+        return;
+    }
+
+    let header = Row::new(vec![
+        Cell::from("Pri"),
+        Cell::from("Repo"),
+        Cell::from("#"),
+        Cell::from("Category"),
+        Cell::from("Age"),
+        Cell::from("PR"),
+        Cell::from("Title"),
+    ])
+    .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+
+    let rows: Vec<Row> = app
+        .actions
+        .iter()
+        .skip(app.scroll_offset)
+        .map(|item| {
+            let (pri_icon, pri_color) = match item.priority.as_str() {
+                "critical" => ("🔴", Color::Red),
+                "high" => ("🟠", Color::LightRed),
+                "medium" => ("🟡", Color::Yellow),
+                "low" => ("🟢", Color::Green),
+                _ => ("⚪", Color::DarkGray),
+            };
+            let cat_color = match item.category.as_str() {
+                "bug" => Color::Red,
+                "feature" => Color::Cyan,
+                "question" => Color::Magenta,
+                _ => Color::White,
+            };
+            let age = if item.age_days > 30 {
+                format!("{}mo", item.age_days / 30)
+            } else {
+                format!("{}d", item.age_days)
+            };
+            let pr = if item.has_pr { "✓" } else if item.is_simple_fix { "⚡" } else { "" };
+            let repo_short = item.repo.split('/').last().unwrap_or(&item.repo);
+
+            Row::new(vec![
+                Cell::from(pri_icon).style(Style::default().fg(pri_color)),
+                Cell::from(repo_short.to_string()).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(format!("#{}", item.issue_number)),
+                Cell::from(item.category.clone()).style(Style::default().fg(cat_color)),
+                Cell::from(age),
+                Cell::from(pr).style(Style::default().fg(Color::Green)),
+                Cell::from(item.title.chars().take(60).collect::<String>()),
+            ])
+        })
+        .collect();
+
+    let critical_count = app.actions.iter().filter(|a| a.priority == "critical").count();
+    let high_count = app.actions.iter().filter(|a| a.priority == "high").count();
+    let title_color = if critical_count > 0 { Color::Red } else if high_count > 0 { Color::Yellow } else { Color::Green };
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(4),
+            Constraint::Length(12),
+            Constraint::Length(6),
+            Constraint::Length(10),
+            Constraint::Length(5),
+            Constraint::Length(3),
+            Constraint::Min(30),
+        ],
+    )
+    .header(header)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(Span::styled(
+                format!(" Action Plan ({}) — 🔴{} 🟠{} 🟡{} ",
+                    app.actions.len(), critical_count, high_count,
+                    app.actions.iter().filter(|a| a.priority == "medium").count()),
+                Style::default().fg(title_color),
+            )),
+    );
+
+    f.render_widget(table, area);
 }
 
 fn draw_repos(f: &mut Frame, app: &App, area: Rect) {
