@@ -58,7 +58,8 @@ pub async fn sync_pulls_now(gh: &Client, db: &Database) -> Result<()> {
 
 async fn sync_issues(gh: &Client, db: &Database, since: Option<&str>) -> Result<()> {
     info!("Syncing issues...");
-    let issues = gh.fetch_issues(since).await?;
+    // Fetch ALL states (open+closed) so closed issues get updated in local DB
+    let issues = gh.fetch_all_issues(since).await?;
     let count = issues.len();
 
     db.batch_upsert_issues(&issues)?;
