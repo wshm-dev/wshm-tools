@@ -5,7 +5,11 @@ use std::io::Write;
 use std::path::PathBuf;
 use tracing::{info, warn};
 
-const REPO: &str = "wshm-dev/wshm";
+/// Default repo for release downloads. Can be overridden at compile time.
+const REPO: &str = match option_env!("WSHM_UPDATE_REPO") {
+    Some(r) => r,
+    None => "wshm-dev/wshm",
+};
 
 /// Current version from Cargo.toml
 pub fn current_version() -> &'static str {
@@ -26,12 +30,18 @@ fn asset_target() -> Result<&'static str> {
     }
 }
 
+/// Get the repo to check for updates (runtime override > compile-time > default).
+fn update_repo() -> String {
+    std::env::var("WSHM_UPDATE_REPO").unwrap_or_else(|_| REPO.to_string())
+}
+
 /// Fetch latest release info from GitHub API.
 async fn fetch_latest_release(
     http: &reqwest::Client,
     token: Option<&str>,
 ) -> Result<(String, String)> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+    let repo = update_repo();
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
 
     let mut req = http
         .get(&url)
@@ -68,7 +78,8 @@ async fn fetch_release_assets(
     tag: &str,
     token: Option<&str>,
 ) -> Result<Vec<(String, String)>> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/tags/{tag}");
+    let repo = update_repo();
+    let url = format!("https://api.github.com/repos/{repo}/releases/tags/{tag}");
 
     let mut req = http
         .get(&url)
