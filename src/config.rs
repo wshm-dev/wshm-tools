@@ -887,9 +887,17 @@ pub struct RepoEntry {
     #[serde(default)]
     pub apply: Option<bool>,
 
+    /// Enable/disable this repo (default: true)
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+
     /// Per-repo webhook secret override
     #[serde(default)]
     pub secret: Option<String>,
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 impl GlobalConfig {
@@ -902,6 +910,22 @@ impl GlobalConfig {
             anyhow::bail!("Global config has no [[repos]] entries");
         }
         Ok(config)
+    }
+
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let content = toml::to_string_pretty(self)
+            .context("Failed to serialize global config")?;
+        fs::write(path, content)
+            .with_context(|| format!("Failed to write {}", path.display()))?;
+        Ok(())
+    }
+
+    /// Default global config path: ~/.wshm/global.toml
+    pub fn default_path() -> PathBuf {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".wshm")
+            .join("global.toml")
     }
 }
 

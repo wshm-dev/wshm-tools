@@ -68,11 +68,17 @@ fn run_loop(
                     }
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                        KeyCode::Char('1') => app.active_tab = app::Tab::Issues,
-                        KeyCode::Char('2') => app.active_tab = app::Tab::PullRequests,
-                        KeyCode::Char('3') => app.active_tab = app::Tab::Queue,
-                        KeyCode::Char('4') => app.active_tab = app::Tab::Stats,
-                        KeyCode::Char('5') => app.active_tab = app::Tab::Activity,
+                        KeyCode::Char('1') => app.active_tab = app::Tab::Repos,
+                        KeyCode::Char('2') => app.active_tab = app::Tab::Issues,
+                        KeyCode::Char('3') => app.active_tab = app::Tab::PullRequests,
+                        KeyCode::Char('4') => app.active_tab = app::Tab::Queue,
+                        KeyCode::Char('5') => app.active_tab = app::Tab::Stats,
+                        KeyCode::Char('6') => app.active_tab = app::Tab::Activity,
+                        KeyCode::Enter => {
+                            if app.active_tab == app::Tab::Repos {
+                                app.toggle_repo();
+                            }
+                        }
                         KeyCode::Tab => app.next_tab(),
                         KeyCode::BackTab => app.prev_tab(),
                         KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),

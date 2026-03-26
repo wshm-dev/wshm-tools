@@ -31,6 +31,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_stats(f, app, chunks[1]);
 
     match app.active_tab {
+        Tab::Repos => draw_repos(f, app, chunks[2]),
         Tab::Issues => draw_issues(f, app, chunks[2]),
         Tab::PullRequests => draw_pulls(f, app, chunks[2]),
         Tab::Queue => draw_queue(f, app, chunks[2]),
@@ -38,7 +39,14 @@ pub fn draw(f: &mut Frame, app: &App) {
         Tab::Activity => draw_activity(f, app, chunks[2]),
     }
 
-    draw_footer(f, chunks[3]);
+    // Root warning
+    if app.is_root {
+        let warning = Paragraph::new("⚠ Running as root is not recommended. Use a dedicated user.")
+            .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+        f.render_widget(warning, chunks[3]);
+    } else {
+        draw_footer(f, chunks[3]);
+    }
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
@@ -507,6 +515,82 @@ fn draw_stats_tab(f: &mut Frame, app: &App, area: Rect) {
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Recent Triages "));
     f.render_widget(recent_table, chunks[1]);
+}
+
+fn draw_repos(f: &mut Frame, app: &App, area: Rect) {
+    if app.repos.is_empty() {
+        let text = Paragraph::new("No repos configured. Edit ~/.wshm/global.toml to add [[repos]].")
+            .block(Block::default().borders(Borders::ALL).title(" Repos "))
+            .style(Style::default().fg(Color::DarkGray));
+        f.render_widget(text, area);
+        return;
+    }
+
+    let header = Row::new(vec![
+        Cell::from(""),
+        Cell::from("Repository"),
+        Cell::from("Path"),
+        Cell::from("Status"),
+        Cell::from("Issues"),
+        Cell::from("Triaged"),
+    ])
+    .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+
+    let rows: Vec<Row> = app
+        .repos
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            let selected = i == app.scroll_offset;
+            let toggle = if r.enabled { "◉" } else { "○" };
+            let toggle_color = if r.enabled { Color::Green } else { Color::DarkGray };
+            let status = if !r.exists {
+                ("✗ missing", Color::Red)
+            } else if !r.has_wshm {
+                ("⚠ no .wshm", Color::Yellow)
+            } else {
+                ("✓ ready", Color::Green)
+            };
+
+            let style = if selected {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else if !r.enabled {
+                Style::default().fg(Color::DarkGray)
+            } else {
+                Style::default()
+            };
+
+            Row::new(vec![
+                Cell::from(toggle).style(Style::default().fg(toggle_color)),
+                Cell::from(r.slug.clone()),
+                Cell::from(r.path.clone()).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(status.0).style(Style::default().fg(status.1)),
+                Cell::from(r.issue_count.map(|c| c.to_string()).unwrap_or("–".into())),
+                Cell::from(r.triaged_count.map(|c| c.to_string()).unwrap_or("–".into())),
+            ])
+            .style(style)
+        })
+        .collect();
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(3),
+            Constraint::Length(25),
+            Constraint::Min(20),
+            Constraint::Length(12),
+            Constraint::Length(8),
+            Constraint::Length(8),
+        ],
+    )
+    .header(header)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(format!(" Repos ({}) — Enter to toggle ", app.repos.len())),
+    );
+
+    f.render_widget(table, area);
 }
 
 fn draw_activity(f: &mut Frame, app: &App, area: Rect) {

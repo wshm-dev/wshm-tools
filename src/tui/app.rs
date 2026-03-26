@@ -1,11 +1,12 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::config::Config;
+use crate::config::{Config, GlobalConfig, RepoEntry};
 use crate::db::issues::Issue;
 use crate::db::pulls::PullRequest;
 use crate::db::triage::TriageResultRow;
 use crate::db::Database;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub struct LogEntry {
@@ -16,6 +17,7 @@ pub struct LogEntry {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Tab {
+    Repos,
     Issues,
     PullRequests,
     Queue,
@@ -26,6 +28,7 @@ pub enum Tab {
 impl Tab {
     pub fn title(&self) -> &'static str {
         match self {
+            Tab::Repos => "Repos",
             Tab::Issues => "Issues",
             Tab::PullRequests => "Pull Requests",
             Tab::Queue => "Merge Queue",
@@ -35,7 +38,7 @@ impl Tab {
     }
 
     pub fn all() -> &'static [Tab] {
-        &[Tab::Issues, Tab::PullRequests, Tab::Queue, Tab::Stats, Tab::Activity]
+        &[Tab::Repos, Tab::Issues, Tab::PullRequests, Tab::Queue, Tab::Stats, Tab::Activity]
     }
 }
 
@@ -116,13 +119,27 @@ pub struct App {
     pub stats: Stats,
     pub activity: Vec<TriageResultRow>,
     pub logs: Vec<LogEntry>,
+    pub repos: Vec<RepoRow>,
+    pub global_config_path: Option<PathBuf>,
+    pub is_root: bool,
+}
+
+#[derive(Clone)]
+pub struct RepoRow {
+    pub slug: String,
+    pub path: String,
+    pub enabled: bool,
+    pub exists: bool,
+    pub has_wshm: bool,
+    pub issue_count: Option<usize>,
+    pub triaged_count: Option<usize>,
 }
 
 impl App {
     pub fn new(config: &Config, db: &Database) -> Result<Self> {
         let mut app = Self {
             repo_slug: config.repo_slug(),
-            active_tab: Tab::Issues,
+            active_tab: if GlobalConfig::default_path().exists() { Tab::Repos } else { Tab::Issues },
             scroll_offset: 0,
             sort_field: SortField::Number,
             sort_dir: SortDir::Desc,
@@ -146,7 +163,11 @@ impl App {
             },
             activity: Vec::new(),
             logs: Vec::new(),
+            repos: Vec::new(),
+            global_config_path: None,
+            is_root: std::env::var("USER").unwrap_or_default() == "root",
         };
+        app.load_repos();
         app.refresh(db)?;
         Ok(app)
     }
@@ -374,7 +395,77 @@ impl App {
             Tab::PullRequests => self.pulls.len(),
             Tab::Queue => self.pulls.len(),
             Tab::Stats => self.stats.recent_triages.len(),
+            Tab::Repos => self.repos.len(),
             Tab::Activity => self.logs.len(),
+        }
+    }
+
+    /// Load repos from global.toml
+    pub fn load_repos(&mut self) {
+        let path = GlobalConfig::default_path();
+        if !path.exists() {
+            return;
+        }
+        self.global_config_path = Some(path.clone());
+
+        let global = match GlobalConfig::load(&path) {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+
+        self.repos = global
+            .repos
+            .iter()
+            .map(|r| {
+                let path_buf = std::path::PathBuf::from(&r.path);
+                let exists = path_buf.exists();
+                let has_wshm = path_buf.join(".wshm").exists();
+
+                // Try to get counts from the repo's state.db
+                let (issue_count, triaged_count) = if has_wshm {
+                    let db_path = path_buf.join(".wshm").join("state.db");
+                    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                        let issues: Option<usize> = conn
+                            .query_row("SELECT COUNT(*) FROM issues WHERE state = 'open'", [], |r| r.get(0))
+                            .ok();
+                        let triaged: Option<usize> = conn
+                            .query_row("SELECT COUNT(*) FROM triage_results", [], |r| r.get(0))
+                            .ok();
+                        (issues, triaged)
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+                RepoRow {
+                    slug: r.slug.clone(),
+                    path: r.path.to_string_lossy().to_string(),
+                    enabled: r.enabled,
+                    exists,
+                    has_wshm,
+                    issue_count,
+                    triaged_count,
+                }
+            })
+            .collect();
+    }
+
+    /// Toggle enabled/disabled for the selected repo and save
+    pub fn toggle_repo(&mut self) {
+        if let Some(repo) = self.repos.get_mut(self.scroll_offset) {
+            repo.enabled = !repo.enabled;
+
+            // Save to global.toml
+            if let Some(ref path) = self.global_config_path {
+                if let Ok(mut global) = GlobalConfig::load(path) {
+                    if let Some(entry) = global.repos.iter_mut().find(|r| r.slug == repo.slug) {
+                        entry.enabled = repo.enabled;
+                    }
+                    let _ = global.save(path);
+                }
+            }
         }
     }
 
