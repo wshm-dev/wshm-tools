@@ -3,7 +3,12 @@
 # Run:   docker run -e GITHUB_TOKEN -e ANTHROPIC_API_KEY wshm daemon --poll --no-server --apply
 
 # ── Build stage ───────────────────────────────────────────────
-FROM rust:1.88-bookworm AS builder
+FROM rust:latest AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libclang-dev \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
@@ -19,11 +24,12 @@ RUN cargo build --release --bin wshm && \
     strip target/release/wshm
 
 # ── Runtime stage ─────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

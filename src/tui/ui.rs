@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use super::app::{App, SortField, Tab};
+use super::app::{App, InputMode, SortField, Tab};
 
 fn sort_header(app: &App, label: &str, field: SortField) -> String {
     if app.sort_field == field {
@@ -587,10 +587,42 @@ fn draw_repos(f: &mut Frame, app: &App, area: Rect) {
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .title(format!(" Repos ({}) — Enter to toggle ", app.repos.len())),
+            .title(format!(" Repos ({}) ", app.repos.len())),
     );
 
-    f.render_widget(table, area);
+    // Split area for table + input/help
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(5), Constraint::Length(3)])
+        .split(area);
+
+    f.render_widget(table, layout[0]);
+
+    // Input prompt or help
+    if let Some(ref mode) = app.input_mode {
+        let (prompt, hint) = match mode {
+            InputMode::AddRepoSlug => ("Repo slug (owner/repo): ", "Enter to confirm, Esc to cancel"),
+            InputMode::AddRepoPath => ("Local path: ", "Enter to confirm, Esc to cancel"),
+            InputMode::DeleteConfirm => {
+                let slug = app.repos.get(app.scroll_offset).map(|r| r.slug.as_str()).unwrap_or("?");
+                let _ = slug; // used in format below
+                ("Delete? (y/N): ", "")
+            }
+        };
+        let input = Paragraph::new(Line::from(vec![
+            Span::styled(prompt, Style::default().fg(Color::Yellow)),
+            Span::raw(&app.input_buffer),
+            Span::styled("▌", Style::default().fg(Color::Yellow)),
+        ]))
+        .block(Block::default().borders(Borders::ALL));
+        f.render_widget(input, layout[1]);
+    } else {
+        let help = Paragraph::new(Span::styled(
+            " Enter:toggle  n:add  x:delete  r:refresh  ↑↓:select",
+            Style::default().fg(Color::DarkGray),
+        ));
+        f.render_widget(help, layout[1]);
+    }
 }
 
 fn draw_activity(f: &mut Frame, app: &App, area: Rect) {

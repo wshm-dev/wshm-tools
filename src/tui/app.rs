@@ -122,6 +122,18 @@ pub struct App {
     pub repos: Vec<RepoRow>,
     pub global_config_path: Option<PathBuf>,
     pub is_root: bool,
+    pub input_mode: Option<InputMode>,
+    pub input_buffer: String,
+    pub input_step: u8,
+    pub input_tmp_slug: String,
+    pub confirm_delete: bool,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum InputMode {
+    AddRepoSlug,
+    AddRepoPath,
+    DeleteConfirm,
 }
 
 #[derive(Clone)]
@@ -166,6 +178,11 @@ impl App {
             repos: Vec::new(),
             global_config_path: None,
             is_root: std::env::var("USER").unwrap_or_default() == "root",
+            input_mode: None,
+            input_buffer: String::new(),
+            input_step: 0,
+            input_tmp_slug: String::new(),
+            confirm_delete: false,
         };
         app.load_repos();
         app.refresh(db)?;
@@ -450,6 +467,90 @@ impl App {
                 }
             })
             .collect();
+    }
+
+    pub fn start_add_repo(&mut self) {
+        self.input_mode = Some(InputMode::AddRepoSlug);
+        self.input_buffer.clear();
+        self.input_tmp_slug.clear();
+    }
+
+    pub fn start_delete_repo(&mut self) {
+        if !self.repos.is_empty() {
+            self.input_mode = Some(InputMode::DeleteConfirm);
+        }
+    }
+
+    pub fn confirm_input(&mut self) {
+        match self.input_mode.clone() {
+            Some(InputMode::AddRepoSlug) => {
+                if !self.input_buffer.is_empty() {
+                    self.input_tmp_slug = self.input_buffer.clone();
+                    self.input_buffer.clear();
+                    // Default path: ~/slug.split('/').last()
+                    let default_path = format!(
+                        "{}/{}",
+                        dirs::home_dir().unwrap_or_default().display(),
+                        self.input_tmp_slug.split('/').last().unwrap_or("repo")
+                    );
+                    self.input_buffer = default_path;
+                    self.input_mode = Some(InputMode::AddRepoPath);
+                }
+            }
+            Some(InputMode::AddRepoPath) => {
+                if !self.input_buffer.is_empty() {
+                    let path = self.input_buffer.clone();
+                    self.add_repo(&self.input_tmp_slug.clone(), &path);
+                    self.input_mode = None;
+                    self.input_buffer.clear();
+                }
+            }
+            Some(InputMode::DeleteConfirm) => {
+                if self.input_buffer.to_lowercase() == "y" {
+                    self.delete_selected_repo();
+                }
+                self.input_mode = None;
+                self.input_buffer.clear();
+            }
+            None => {}
+        }
+    }
+
+    pub fn cancel_input(&mut self) {
+        self.input_mode = None;
+        self.input_buffer.clear();
+    }
+
+    fn add_repo(&mut self, slug: &str, path: &str) {
+        if let Some(ref config_path) = self.global_config_path {
+            if let Ok(mut global) = GlobalConfig::load(config_path) {
+                global.repos.push(RepoEntry {
+                    slug: slug.to_string(),
+                    path: PathBuf::from(path),
+                    apply: None,
+                    enabled: true,
+                    secret: None,
+                });
+                let _ = global.save(config_path);
+                self.load_repos();
+            }
+        }
+    }
+
+    fn delete_selected_repo(&mut self) {
+        if let Some(repo) = self.repos.get(self.scroll_offset) {
+            let slug = repo.slug.clone();
+            if let Some(ref config_path) = self.global_config_path {
+                if let Ok(mut global) = GlobalConfig::load(config_path) {
+                    global.repos.retain(|r| r.slug != slug);
+                    let _ = global.save(config_path);
+                    self.load_repos();
+                    if self.scroll_offset > 0 {
+                        self.scroll_offset -= 1;
+                    }
+                }
+            }
+        }
     }
 
     /// Toggle enabled/disabled for the selected repo and save

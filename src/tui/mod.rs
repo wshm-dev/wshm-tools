@@ -66,6 +66,18 @@ fn run_loop(
                     {
                         return Ok(());
                     }
+                    // Input mode intercepts all keys
+                    if app.input_mode.is_some() {
+                        match key.code {
+                            KeyCode::Enter => app.confirm_input(),
+                            KeyCode::Esc => app.cancel_input(),
+                            KeyCode::Backspace => { app.input_buffer.pop(); }
+                            KeyCode::Char(c) => app.input_buffer.push(c),
+                            _ => {}
+                        }
+                        continue;
+                    }
+
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                         KeyCode::Char('1') => app.active_tab = app::Tab::Repos,
@@ -83,7 +95,16 @@ fn run_loop(
                         KeyCode::BackTab => app.prev_tab(),
                         KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
                         KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
-                        KeyCode::Char('r') => app.refresh(db)?,
+                        KeyCode::Char('r') => {
+                            app.refresh(db)?;
+                            app.load_repos();
+                        }
+                        KeyCode::Char('n') if app.active_tab == app::Tab::Repos => {
+                            app.start_add_repo();
+                        }
+                        KeyCode::Char('x') if app.active_tab == app::Tab::Repos => {
+                            app.start_delete_repo();
+                        }
                         KeyCode::Char('s') => app.set_sort(app::SortField::Number),
                         KeyCode::Char('t') => app.set_sort(app::SortField::Title),
                         KeyCode::Char('c') => app.set_sort(app::SortField::Category),
