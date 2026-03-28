@@ -89,7 +89,7 @@ impl Client {
 
         loop {
             let url = format!(
-                "https://api.github.com/repos/{}/{}/pulls?state=open&per_page={pp}&page={page}",
+                "https://api.github.com/repos/{}/{}/pulls?state=all&per_page={pp}&page={page}",
                 self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
 
