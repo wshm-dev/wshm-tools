@@ -9,5 +9,6 @@ pub mod icm;
 pub mod license;
 pub mod login;
 pub mod pipelines;
+pub mod pro_hooks;
 pub mod update;
 pub mod vault;

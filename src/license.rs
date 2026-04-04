@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
@@ -16,58 +15,7 @@ fn token_cache_path() -> PathBuf {
         .join("license.jwt")
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct JwtClaims {
-    sub: String,
-    email: String,
-    plan: String,
-    machine_id: String,
-    exp: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct LicenseStatus {
-    pub valid: bool,
-    pub plan: String,
-    pub max_repos: Option<usize>,
-    pub message: String,
-}
-
-impl LicenseStatus {
-    pub fn free() -> Self {
-        Self {
-            valid: false,
-            plan: "free".into(),
-            max_repos: Some(1),
-            message: "No license — limited to 1 repo. Run: wshm login --license".into(),
-        }
-    }
-
-    pub fn repo_limit(&self) -> Option<usize> {
-        if self.valid {
-            None // unlimited
-        } else {
-            Some(1)
-        }
-    }
-}
-
-/// Check license at startup. Non-blocking, never fails.
-pub fn check() -> LicenseStatus {
-    // 1. Try cached JWT (offline)
-    if let Some(status) = verify_cached() {
-        return status;
-    }
-
-    // 2. Try to validate with API
-    if let Some(status) = validate_remote() {
-        return status;
-    }
-
-    LicenseStatus::free()
-}
-
-/// Login flow: ask for license key and validate
+/// Interactive login flow: ask for license key, activate, cache JWT.
 pub fn login() -> Result<()> {
     println!("\n── License ──");
     println!("Enter your license key (get one at https://wshm.dev):\n");
@@ -89,23 +37,24 @@ pub fn login() -> Result<()> {
     // Generate machine ID
     let machine_id = generate_machine_id();
 
-    // Validate
-    let client = ureq::agent();
-    let resp = client
-        .post(&format!("{LICENSE_API}/activate"))
+    // Activate with API
+    let resp = ureq::post(&format!("{LICENSE_API}/activate"))
         .set("Content-Type", "application/json")
         .timeout(std::time::Duration::from_secs(10))
-        .send_string(&serde_json::json!({
-            "license_key": key,
-            "machine_id": machine_id,
-            "app_version": env!("CARGO_PKG_VERSION"),
-        }).to_string());
+        .send_string(
+            &serde_json::json!({
+                "license_key": key,
+                "machine_id": machine_id,
+                "app_version": env!("CARGO_PKG_VERSION"),
+            })
+            .to_string(),
+        );
 
     match resp {
         Ok(r) => {
             let body: serde_json::Value = r.into_json().unwrap_or_default();
             if let Some(token) = body["token"].as_str() {
-                cache_token(token);
+                cache_token(token)?;
                 let plan = body["license"]["type"].as_str().unwrap_or("pro");
                 println!("✓ License activated — plan: {plan}");
             } else {
@@ -123,73 +72,19 @@ pub fn login() -> Result<()> {
     Ok(())
 }
 
-fn verify_cached() -> Option<LicenseStatus> {
-    let path = token_cache_path();
-    let token = fs::read_to_string(&path).ok()?;
-    let token = token.trim();
-    if token.is_empty() {
-        return None;
-    }
-
-    // Decode JWT payload (no signature verification — offline)
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return None;
-    }
-
-    use base64::Engine;
-    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(parts[1])
-        .ok()?;
-    let claims: JwtClaims = serde_json::from_slice(&payload).ok()?;
-
-    // Check expiry
-    let now = chrono::Utc::now().timestamp();
-    if claims.exp < now {
-        return None; // expired, need to re-validate
-    }
-
-    Some(LicenseStatus {
-        valid: true,
-        plan: claims.plan,
-        max_repos: None,
-        message: format!("Licensed ({})", claims.email),
-    })
-}
-
-fn validate_remote() -> Option<LicenseStatus> {
-    let key = get_credential("LICENSE_KEY")?;
-    let machine_id = generate_machine_id();
-
-    let resp = ureq::post(&format!("{LICENSE_API}/activate"))
-        .set("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(5))
-        .send_string(&serde_json::json!({
-            "license_key": key,
-            "machine_id": machine_id,
-            "app_version": env!("CARGO_PKG_VERSION"),
-        }).to_string())
-        .ok()?;
-
-    let body: serde_json::Value = resp.into_json().ok()?;
-    let token = body["token"].as_str()?;
-    cache_token(token);
-
-    let plan = body["license"]["type"].as_str().unwrap_or("pro").to_string();
-    Some(LicenseStatus {
-        valid: true,
-        plan,
-        max_repos: None,
-        message: "License valid".into(),
-    })
-}
-
-fn cache_token(token: &str) {
+fn cache_token(token: &str) -> Result<()> {
     let path = token_cache_path();
     if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+        fs::create_dir_all(parent)?;
     }
-    let _ = fs::write(&path, token);
+    fs::write(&path, token)?;
+    // Restrict permissions on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
 }
 
 fn generate_machine_id() -> String {
@@ -203,20 +98,6 @@ fn generate_machine_id() -> String {
     let mut hasher = Sha256::new();
     hasher.update(format!("{hostname}:{username}"));
     format!("{:x}", hasher.finalize())
-}
-
-fn get_credential(key: &str) -> Option<String> {
-    let path = credentials_path();
-    let content = fs::read_to_string(&path).ok()?;
-    for line in content.lines() {
-        let line = line.trim();
-        if let Some((k, v)) = line.split_once('=') {
-            if k.trim() == key {
-                return Some(v.trim().to_string());
-            }
-        }
-    }
-    None
 }
 
 fn save_credential(key: &str, value: &str) -> Result<()> {
@@ -249,5 +130,10 @@ fn save_credential(key: &str, value: &str) -> Result<()> {
     }
     fs::write(&path, format!("# wshm credentials\n{content}\n"))
         .context("Failed to save credentials")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+    }
     Ok(())
 }

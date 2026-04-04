@@ -15,12 +15,26 @@ mod github;
 mod icm;
 mod login;
 mod pipelines;
+pub mod pro_hooks;
 mod telemetry;
 mod tui;
 mod update;
 mod vault;
 
 use cli::{Cli, Command};
+
+const PRO_MSG: &str = "This feature requires wshm Pro. Visit https://wshm.dev/pro or run: wshm login --license";
+
+/// Gate a pro feature. Returns Ok(()) if pro, Err with message if not.
+fn require_pro(feature: &str) -> Result<()> {
+    if pro_hooks::is_pro() && pro_hooks::has_feature(feature) {
+        return Ok(());
+    }
+    if pro_hooks::is_pro() {
+        anyhow::bail!("Your wshm Pro license does not include the '{}' feature.", feature);
+    }
+    anyhow::bail!("{}\n   Feature: {}", PRO_MSG, feature);
+}
 
 fn triage_format(cli: &Cli) -> OutputFormat {
     if cli.csv {
@@ -123,6 +137,7 @@ async fn main() -> Result<()> {
                 .await?;
         }
         Some(Command::Conflicts(args)) => {
+            require_pro("conflicts")?;
             let (config, db, gh, exporter) = init_full(&cli)?;
 
             if !cli.offline {
@@ -173,16 +188,19 @@ async fn main() -> Result<()> {
             )
             .await?;
 
-            let conflict_args = cli::ConflictArgs { apply: args.apply };
-            pipelines::conflict_resolution::run(
-                &config,
-                &db,
-                &gh,
-                &conflict_args,
-                cli.json,
-                exporter.as_ref(),
-            )
-            .await?;
+            // Conflict resolution is pro-only — skip in OSS
+            if pro_hooks::is_pro() {
+                let conflict_args = cli::ConflictArgs { apply: args.apply };
+                pipelines::conflict_resolution::run(
+                    &config,
+                    &db,
+                    &gh,
+                    &conflict_args,
+                    cli.json,
+                    exporter.as_ref(),
+                )
+                .await?;
+            }
 
             // Send notification if configured
             if config.notify.on_run && config.notify.has_targets() {
@@ -194,6 +212,7 @@ async fn main() -> Result<()> {
             }
         }
         Some(Command::Review(args)) => {
+            require_pro("review")?;
             let (config, db, gh) = init_core(&cli)?;
 
             if !cli.offline {
@@ -214,6 +233,7 @@ async fn main() -> Result<()> {
             pipelines::pr_health::run(&db, args, cli.json)?;
         }
         Some(Command::Fix(args)) => {
+            require_pro("auto-fix")?;
             let (config, db, gh, exporter) = init_full(&cli)?;
 
             if !cli.offline {
@@ -223,17 +243,23 @@ async fn main() -> Result<()> {
             pipelines::autogen::run(&config, &db, &gh, args, exporter.as_ref()).await?;
         }
         Some(Command::Report(args)) => {
+            // Markdown is free, HTML/PDF require pro
+            if args.format != "md" {
+                require_pro("reports")?;
+            }
             let config = config::Config::load(&cli)?;
             let db = db::Database::open(&config)?;
             let slug = config.repo_slug();
             pipelines::report::run(&db, args, &slug)?;
         }
         Some(Command::Changelog(args)) => {
+            require_pro("changelog")?;
             let config = config::Config::load(&cli)?;
             let gh = github::Client::new(&config)?;
             pipelines::changelog::run(&gh, args).await?;
         }
         Some(Command::Dashboard(args)) => {
+            require_pro("dashboard")?;
             let config = config::Config::load(&cli)?;
             let db = db::Database::open(&config)?;
             pipelines::dashboard::run(&db, args)?;
@@ -245,6 +271,7 @@ async fn main() -> Result<()> {
             pipelines::context::run(&db, &slug)?;
         }
         Some(Command::Improve(args)) => {
+            require_pro("improve")?;
             let (config, db, gh) = init_core(&cli)?;
 
             if !cli.offline {
@@ -292,15 +319,21 @@ async fn main() -> Result<()> {
             }
         },
         Some(Command::Login(args)) => {
-            if !args.github && !args.ai && !args.claude || args.license {
+            if args.license {
                 wshm::license::login()?;
             }
-            login::run(args)?;
+            if !args.license {
+                login::run(args)?;
+            }
         }
         Some(Command::Update(args)) => {
             update::check_and_update(args.apply, cli.json).await?;
         }
         Some(Command::Daemon(args)) => {
+            // Daemon webhook mode is pro-only; polling is free
+            if !args.no_server && !args.poll {
+                require_pro("daemon")?;
+            }
             if args.install {
                 daemon::systemd::install(args)?;
                 return Ok(());
@@ -310,19 +343,8 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
             if let Some(ref config_path) = args.config {
-                // Multi-repo mode
-                let mut global = config::GlobalConfig::load(config_path)?;
-
-                // License check: limit repos if no valid license
-                let lic = wshm::license::check();
-                if let Some(limit) = lic.repo_limit() {
-                    if global.repos.len() > limit {
-                        eprintln!("⚠️  {}", lic.message);
-                        eprintln!("   Scanning only the first {} repo(s).", limit);
-                        global.repos.truncate(limit);
-                    }
-                }
-
+                // Multi-repo mode — no repo limit in OSS, all repos are free
+                let global = config::GlobalConfig::load(config_path)?;
                 daemon::run_multi(global, args.clone()).await?;
             } else {
                 // Single-repo mode (backward compatible)
@@ -342,6 +364,7 @@ async fn main() -> Result<()> {
             pipelines::notify::run(&config, &db, cli.json).await?;
         }
         Some(Command::Revert(args)) => {
+            require_pro("revert")?;
             let (config, db, gh, _) = init_full(&cli)?;
 
             if !cli.offline {

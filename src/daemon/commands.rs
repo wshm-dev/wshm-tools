@@ -183,6 +183,9 @@ pub async fn execute(
             ))
         }
         SlashCommand::Review => {
+            if !crate::pro_hooks::is_pro() {
+                return Ok("Inline review requires wshm Pro. Visit https://wshm.dev/pro".into());
+            }
             if !is_pr {
                 return Ok("This command only works on pull requests.".into());
             }
@@ -228,6 +231,9 @@ pub async fn execute(
             }
         }
         SlashCommand::Fix => {
+            if !crate::pro_hooks::is_pro() {
+                return Ok("Auto-fix requires wshm Pro. Visit https://wshm.dev/pro".into());
+            }
             if is_pr {
                 return Ok("This command only works on issues.".into());
             }

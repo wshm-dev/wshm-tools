@@ -5,11 +5,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use tracing::{info, warn};
 
-/// Default repo for release downloads. Can be overridden at compile time.
-const REPO: &str = match option_env!("WSHM_UPDATE_REPO") {
-    Some(r) => r,
-    None => "wshm-dev/wshm",
-};
+/// Repo for release downloads. Hardcoded for supply-chain safety.
+const REPO: &str = "wshm-dev/wshm";
 
 /// Current version from Cargo.toml
 pub fn current_version() -> &'static str {
@@ -30,9 +27,9 @@ fn asset_target() -> Result<&'static str> {
     }
 }
 
-/// Get the repo to check for updates (runtime override > compile-time > default).
+/// Get the repo to check for updates. Hardcoded — no override allowed.
 fn update_repo() -> String {
-    std::env::var("WSHM_UPDATE_REPO").unwrap_or_else(|_| REPO.to_string())
+    REPO.to_string()
 }
 
 /// Fetch latest release info from GitHub API.

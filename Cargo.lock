@@ -7370,6 +7370,7 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "futures",
+ "getrandom 0.2.17",
  "git2",
  "google-cloud-secretmanager-v1",
  "google-cloud-storage",

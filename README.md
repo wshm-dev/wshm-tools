@@ -1,24 +1,109 @@
-[![License: Source Available](https://img.shields.io/badge/License-Source--Available-blue.svg)](LICENSE)
+<p align="center">
+  <img src="assets/wizard.png" alt="wshm — Your repo's wish is my command" width="600"/>
+</p>
 
-# wshm (wishmaster)
+<h1 align="center">wshm</h1>
+<p align="center"><em>Your repo's wish is my command.</em></p>
 
-> Your repo's wish is my command.
+<p align="center">
+  <strong>AI-powered GitHub agent for repository maintenance.</strong><br>
+  Triage issues, review PRs, auto-fix bugs, manage merge queues — all from a single binary.
+</p>
 
-AI-powered GitHub agent for OSS maintainers. Triage issues, auto-fix simple bugs, analyze PRs, resolve conflicts, generate reports. Built in Rust. Zero infra. One binary.
+<p align="center">
+  <a href="https://wshm.dev">Website</a> •
+  <a href="#features">Features</a> •
+  <a href="#install">Install</a> •
+  <a href="#cli-reference">CLI</a> •
+  <a href="#license">License</a>
+</p>
+
+<p align="center">
+  English •
+  <a href="docs/README.fr.md">Français</a> •
+  <a href="docs/README.es.md">Español</a> •
+  <a href="docs/README.de.md">Deutsch</a> •
+  <a href="docs/README.ja.md">日本語</a> •
+  <a href="docs/README.zh.md">中文</a> •
+  <a href="docs/README.ko.md">한국어</a> •
+  <a href="docs/README.pt.md">Português</a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-SSPL--1.0-purple.svg" alt="License: SSPL v1"/></a>
+  <a href="https://wshm.dev"><img src="https://img.shields.io/badge/website-wshm.dev-blue.svg" alt="Website"/></a>
+</p>
+
+---
+
+> **Source-Available Software** — This project is licensed under the [Server Side Public License (SSPL v1)](LICENSE), the same license used by MongoDB and Elastic. You can freely use, study, and modify the code. You cannot offer it as a competing managed service. See [License](#license) for details.
+
+## Features
+
+- **Issue Triage** — Automatically classify, label, and prioritize new issues using AI
+- **PR Analysis** — Summarize PRs, assess risk, generate review checklists
+- **Auto-Fix** — Generate and open draft PRs for simple bugs (confidence-gated)
+- **Merge Queue** — Score and rank PRs by readiness, auto-merge when above threshold
+- **Conflict Resolution** — Detect and auto-resolve merge conflicts (never force-pushes)
+- **Inline Review** — AI-powered line-by-line code review comments
+- **Auto-Assign** — Weighted random assignment of maintainers to issues and PRs
+- **Labels Blacklist** — Prevent specific labels from ever being applied
+- **Periodic Retriage** — Re-evaluate stale triage results on a schedule
+- **Notifications** — Daily roadmap to Discord, Slack, Teams, or webhook
+- **Dashboard & Reports** — HTML dashboards and markdown/PDF reports
+- **Fully Customizable** — Templates for every comment, branding, and behavior
+
+## How it works
+
+```
+              ┌─────────────┐
+              │  GitHub API  │
+              └──────┬───────┘
+                     │ sync (ETag + incremental)
+                     ▼
+              ┌─────────────┐
+              │  SQLite DB   │  ← .wshm/state.db (committed to repo)
+              └──────┬───────┘
+                     │ read (instant, no network)
+                     ▼
+              ┌─────────────┐
+              │  AI Engine   │  ← Your API keys (Anthropic, OpenAI, Google, etc.)
+              └──────┬───────┘
+                     │ classify / analyze / fix
+                     ▼
+              ┌─────────────┐
+              │   Actions    │  ← Label, comment, open PR, merge, assign
+              └─────────────┘
+```
+
+**Zero infrastructure.** One binary. Your keys. Your data. Runs as CLI, GitHub Action, or persistent daemon.
 
 ## Install
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap wshm-dev/tap
+brew install wshm
+```
+
+### Cargo
 
 ```bash
 cargo install wshm
 ```
 
-Or build from source:
+### Build from source
 
 ```bash
-git clone https://github.com/pszymkowiak/wshm.git
+git clone https://github.com/wshm-dev/wshm.git
 cd wshm
 cargo build --release
 ```
+
+### Prebuilt binaries
+
+Download from [GitHub Releases](https://github.com/wshm-dev/wshm/releases).
 
 ## Quick Start
 
@@ -37,20 +122,42 @@ wshm triage
 wshm triage --apply
 ```
 
+## Pipelines
+
+### Pipeline 1 — Issue Triage
+```
+New Issue → AI Classification → Label + Priority + Comment
+                                  ├── duplicate? → close with link
+                                  ├── needs-info? → ask for details
+                                  ├── simple bug? → auto-fix (draft PR)
+                                  └── feature? → label + backlog
+```
+
+### Pipeline 2 — PR Analysis
+```
+New PR → Fetch diff + CI status → AI Analysis → Summary + Risk + Checklist
+                                                  └── Auto-label + comment
+```
+
+### Pipeline 3 — Merge Queue
+```
+Open PRs → Score (CI, reviews, age, risk, conflicts) → Ranked list
+                                                         └── Auto-merge if above threshold
+```
+
+### Pipeline 4 — Conflict Resolution
+```
+Open PRs → Check mergeable → Conflicting? → Rebase from main
+                                              └── AI resolution (new commit, never force-push)
+```
+
 ## Daemon Mode (H24)
 
 wshm can run as a persistent daemon that reacts to GitHub events in real-time.
 
 ### Webhook Mode (recommended)
 
-Requires a public URL (IP, domain, or tunnel like ngrok/cloudflare).
-
 ```bash
-# Setup
-wshm login
-wshm config init
-
-# Start daemon
 wshm daemon --apply --secret "whsec_your_webhook_secret"
 ```
 
@@ -62,14 +169,8 @@ Then configure a GitHub webhook on your repo:
 
 ### Polling Mode (no public IP needed)
 
-Uses the GitHub Events API — no webhook configuration required.
-
 ```bash
-# Start daemon with polling (no HTTP server)
 wshm daemon --apply --poll --no-server
-
-# Or hybrid: webhook + polling fallback
-wshm daemon --apply --poll
 ```
 
 | Flag | Description |
@@ -97,13 +198,6 @@ wshm daemon --apply --poll
 | `/wshm help` | List available commands |
 | Every 5 min (scheduler) | Incremental sync + triage untriaged issues |
 
-### Health Check
-
-```bash
-curl http://localhost:3000/health
-# {"status":"ok","apply":true,"pending_events":0,"repo":"owner/repo"}
-```
-
 ## Authentication
 
 ### Interactive Login
@@ -127,17 +221,23 @@ Credentials are stored in `.wshm/credentials` (chmod 600, gitignored).
 
 ### Supported AI Providers
 
-| Provider | Env Var | Models |
-|----------|---------|--------|
-| `anthropic` (default) | `ANTHROPIC_API_KEY` | claude-sonnet-4-20250514, etc. |
-| `openai` | `OPENAI_API_KEY` | gpt-4o, etc. |
-| `google` | `GOOGLE_API_KEY` | gemini-2.5-pro, etc. |
-| `mistral` | `MISTRAL_API_KEY` | mistral-large, etc. |
-| `groq` | `GROQ_API_KEY` | llama-3, etc. |
-| `deepseek` | `DEEPSEEK_API_KEY` | deepseek-chat, etc. |
-| `xai` | `XAI_API_KEY` | grok-3, etc. |
-| `ollama` | — (local) | Any Ollama model |
-| `local` | — | phi4-mini, smollm3-3b, qwen3-4b, etc. |
+| Provider | Env Var | Local |
+|----------|---------|-------|
+| `anthropic` (default) | `ANTHROPIC_API_KEY` | — |
+| `openai` | `OPENAI_API_KEY` | — |
+| `google` | `GOOGLE_API_KEY` | — |
+| `mistral` | `MISTRAL_API_KEY` | — |
+| `groq` | `GROQ_API_KEY` | — |
+| `deepseek` | `DEEPSEEK_API_KEY` | — |
+| `xai` | `XAI_API_KEY` | — |
+| `ollama` | — | yes |
+| `local` | — | yes (phi4-mini, smollm3-3b, qwen3-4b) |
+
+### Claude Subscription (no API key needed)
+
+```bash
+wshm login --claude    # Uses your existing Claude Max/Pro/Team subscription
+```
 
 ## CLI Reference
 
@@ -173,75 +273,67 @@ Credentials are stored in `.wshm/credentials` (chmod 600, gitignored).
 | `--json` | JSON output for scripting |
 | `--repo <owner/repo>` | Override detected repo |
 
-## Branding
+## Configuration
 
-Customize the bot's identity for your organization.
+Everything is configured in `.wshm/config.toml`:
 
 ```toml
-# .wshm/config.toml
+[ai]
+provider = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[triage]
+enabled = true
+auto_fix = false
+auto_fix_confidence = 0.85
+retriage_interval_hours = 24
+
+[pr]
+enabled = true
+auto_label = true
+risk_labels = true
+
+[queue]
+enabled = true
+merge_threshold = 15
+strategy = "rebase"              # merge, rebase, squash
+
+[assign]
+enabled = true
+
+[[assign.issues]]
+user = "alice"
+weight = 70
+
+[[assign.prs]]
+user = "bob"
+weight = 50
+
+labels_blacklist = ["do-not-touch", "manual-only"]
+
 [branding]
-name = "jarvis"                                # Bot name in comments
-url = "https://acme.com/jarvis"                # Link in footers
-avatar_url = "https://acme.com/logo.png"       # Logo in comment headers
-tagline = "Your AI repo assistant"             # Subtitle in headers
-command_prefix = "/jarvis"                     # Slash command prefix
-footer_template = "*{action} by [{name}]({url})*"  # Custom footer
-```
+name = "my-bot"
+url = "https://my-project.dev"
+command_prefix = "/my-bot"
 
-**Before (default):**
-> *Triaged by [wshm](https://github.com/pszymkowiak/wshm)*
-
-**After (custom branding):**
-> <img src="https://acme.com/logo.png" width="20" height="20"> **jarvis** — Your AI repo assistant
->
-> ## 🔍 Triage Summary
-> ...
->
-> *Triaged by [jarvis](https://acme.com/jarvis)*
-
-All GitHub comments, slash commands, PR titles, and footers adapt automatically.
-
-## Notifications
-
-Send a daily priority summary to Discord, Slack, Microsoft Teams, or any webhook.
-
-```toml
-# .wshm/config.toml
 [notify]
-on_run = true                    # auto-send after `wshm run`
+on_run = true
 
 [[notify.discord]]
 url = "https://discord.com/api/webhooks/ID/TOKEN"
-username = "wshm"
 
 [[notify.slack]]
 url = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 
 [[notify.teams]]
 url = "https://outlook.office.com/webhook/YOUR/WEBHOOK/URL"
-
-[[notify.webhooks]]
-url = "https://your-server.com/wshm-notify"
-secret = "hmac-secret"
 ```
-
-```bash
-wshm notify          # send summary now
-wshm run --apply     # full cycle + auto-notify (if on_run = true)
-```
-
-The summary includes: open issues, untriaged count, high-priority issues, open PRs, high-risk PRs, and merge conflicts. Formatted natively for each platform (Discord embeds, Slack blocks, Teams adaptive cards).
 
 ## Auto-Fix with Podman Sandbox
-
-wshm can auto-generate fix PRs from issues using Claude Code or Codex, optionally inside a rootless Podman container.
 
 ```bash
 # Build the sandbox image
 podman build -f Dockerfile.sandbox -t wshm-sandbox:latest .
-
-# Dry-run (shows what would happen)
-wshm fix --issue 42 --docker
 
 # Run Claude Code in Podman sandbox
 wshm fix --issue 42 --docker --apply
@@ -250,38 +342,22 @@ wshm fix --issue 42 --docker --apply
 wshm fix --issue 42 --docker --tool codex --apply
 ```
 
-### Credential Injection (Priority Order)
+## Notifications
 
-| Priority | Source | How | Context |
-|----------|--------|-----|---------|
-| 1 | `CLAUDE_CREDENTIALS_JSON` | GitHub Secret -> temp file -> volume mount | CI |
-| 2 | `~/.claude/.credentials.json` | Volume mount (`-v ~/.claude:....:ro`) | Local (Max/Pro) |
-| 3 | `ANTHROPIC_API_KEY` | Env var (`-e`) | Fallback API key |
+```bash
+wshm notify          # send summary now
+wshm run --apply     # full cycle + auto-notify (if on_run = true)
+```
 
-**Security** (rootless Podman, like OpenClaw):
-- `--userns=keep-id` (no root)
-- `--cap-drop ALL`
-- `--pids-limit 256`
-- Credentials mounted read-only
+The summary includes: open issues, untriaged count, high-priority issues, open PRs, high-risk PRs, and merge conflicts. Formatted natively for each platform (Discord embeds, Slack blocks, Teams adaptive cards).
 
 ## Reports
 
 ```bash
-# Markdown report
 wshm report --format md
-
-# HTML report (SLA metrics, PR health, duplicates)
 wshm report --format html --output report.html
-
-# PDF report
 wshm report --format pdf --output report.pdf
-
-# Full cycle then report
-wshm run --apply
-wshm report --format html
 ```
-
-Reports include: issue triage, PR analysis, merge queue ranking, SLA tracking, PR health (duplicates, stale/zombie).
 
 ## GitHub Action
 
@@ -302,33 +378,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pszymkowiak/wshm@main
+      - uses: wshm-dev/wshm@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ai-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude-credentials-json: ${{ secrets.CLAUDE_CREDENTIALS_JSON }}
 ```
 
 ## Deploy on a VM
 
 ```bash
-# 1. Clone your repo
-git clone git@github.com:owner/repo.git && cd repo
-
-# 2. Install wshm
 cargo install wshm
-
-# 3. Login
 wshm login
-
-# 4. Init config
 wshm config init
-
-# 5. Start daemon (runs 24/7)
 wshm daemon --apply --poll
-
-# Or with webhook + systemd
-wshm daemon --apply --secret "$WSHM_WEBHOOK_SECRET"
 ```
 
 ### Systemd Service
@@ -352,22 +414,67 @@ Environment=RUST_LOG=info
 WantedBy=multi-user.target
 ```
 
-```bash
-sudo systemctl enable --now wshm
-journalctl -u wshm -f
-```
+## Safety
+
+- **Dry-run by default** — `--apply` required to perform actions
+- **Confidence gates** — never acts autonomously below threshold (default 0.85)
+- **Never force-pushes** — conflict resolution uses new commits
+- **Idempotent** — re-running = same result, no duplicate comments
+- **Token security** — always from env vars, never in config files
+- **Transparent** — every action posts a comment explaining what and why
 
 ## Architecture
 
-See [CLAUDE.md](CLAUDE.md) for the full architecture document, including:
-
-- SQLite cache strategy and sync rules
-- The 4 pipelines (triage, PR analysis, merge queue, conflict resolution)
-- Config reference
-- Project structure
-- AI integration patterns
-- Safety principles
+See [CLAUDE.md](CLAUDE.md) for the full architecture document.
 
 ## License
 
-[Source-Available License v1.0](LICENSE) — Free for individuals and teams up to 20 people. Commercial license required above that threshold. Contact: patrick.szymkowiak@rtk-ai.app
+This project is licensed under the **[Server Side Public License (SSPL v1)](LICENSE)**.
+
+### What you CAN do
+
+- Use wshm for any purpose (personal, commercial, enterprise)
+- Read, study, and audit every line of code
+- Modify the code for your own internal use
+- Contribute back to the project
+
+### What you CANNOT do
+
+- Offer wshm (or a modified version) as a managed/hosted service to third parties without releasing your entire service stack under the SSPL
+- Build a competing commercial service based on this code
+
+### Why SSPL?
+
+We believe in transparency. You should be able to audit the tool that manages your repositories. But we also need to sustain development — the SSPL ensures that no one can take this work and sell it as their own service without contributing back.
+
+This is the same model used by **MongoDB**, **Elastic**, and **Graylog**.
+
+For enterprise licensing or questions: [contact@wshm.dev](mailto:contact@wshm.dev)
+
+## Disclaimer
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
+
+**Precompiled binaries**: Official precompiled binaries are provided for
+convenience via [GitHub Releases](https://github.com/wshm-dev/wshm/releases)
+and [Homebrew](https://github.com/wshm-dev/homebrew-tap). These binaries are
+built from the exact source code available in this repository. However, they
+are distributed **as-is with no warranty**. If you require full
+reproducibility or have security concerns, you are encouraged to build from
+source using the instructions above. By downloading and using a precompiled
+binary, you acknowledge that you do so at your own risk.
+
+**AI-generated actions**: wshm uses AI models to classify issues, analyze
+pull requests, and suggest code fixes. All automated actions are **dry-run by
+default** and require explicit `--apply` to take effect. AI outputs may
+contain errors — always review before applying. wshm-dev is not responsible
+for any actions taken by the AI on your repositories.
+
+---
+
+<p align="center">
+  <sub>Built with Rust. Zero infra. One binary.</sub><br>
+  <sub>&copy; 2026 <a href="https://wshm.dev">wshm-dev</a></sub>
+</p>
