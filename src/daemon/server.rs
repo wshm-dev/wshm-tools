@@ -33,19 +33,29 @@ pub async fn run(
         warn!("No webhook secret configured — webhook endpoint is unauthenticated! Set WSHM_WEBHOOK_SECRET or [daemon].webhook_secret");
     }
 
+    let slug = daemon.config.repo_slug();
+
     let state = Arc::new(ServerState {
-        daemon,
+        daemon: Arc::clone(&daemon),
         tx,
         secret: secret.map(|s| s.to_string()),
     });
 
-    let app = Router::new()
+    let webhook_routes = Router::new()
         .route("/webhook", post(handle_webhook))
         .route("/health", get(handle_health))
         .with_state(state);
 
+    // Build a single-repo MultiDaemonState for the web UI
+    let mut repos = std::collections::HashMap::new();
+    repos.insert(slug, daemon);
+    let multi = Arc::new(super::MultiDaemonState { repos });
+    let web = super::web::web_routes(multi);
+
+    let app = webhook_routes.merge(web);
+
     let listener = tokio::net::TcpListener::bind(bind).await?;
-    info!("Webhook server listening on {bind}");
+    info!("Webhook server listening on {bind} (web UI enabled)");
     axum::serve(listener, app).await?;
 
     Ok(())
@@ -160,18 +170,24 @@ pub async fn run_multi(
     secret: Option<&str>,
 ) -> Result<()> {
     let state = Arc::new(MultiServerState {
-        multi,
+        multi: Arc::clone(&multi),
         tx,
         secret: secret.map(|s| s.to_string()),
     });
 
-    let app = Router::new()
+    // Webhook + health routes (original)
+    let webhook_routes = Router::new()
         .route("/webhook", post(handle_webhook_multi))
         .route("/health", get(handle_health_multi))
         .with_state(state);
 
+    // Web UI + API routes (Svelte SPA + /api/v1/*)
+    let web = super::web::web_routes(multi);
+
+    let app = webhook_routes.merge(web);
+
     let listener = tokio::net::TcpListener::bind(bind).await?;
-    info!("Multi-repo webhook server listening on {bind}");
+    info!("Multi-repo webhook server listening on {bind} (web UI enabled)");
     axum::serve(listener, app).await?;
 
     Ok(())

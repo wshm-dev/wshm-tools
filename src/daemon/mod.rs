@@ -5,6 +5,7 @@ pub mod processor;
 pub mod scheduler;
 pub mod server;
 pub mod systemd;
+pub mod web;
 
 /// Maximum number of webhook events buffered in memory before backpressure.
 const WEBHOOK_CHANNEL_CAPACITY: usize = 256;

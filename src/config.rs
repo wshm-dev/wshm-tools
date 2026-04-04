@@ -60,6 +60,9 @@ pub struct Config {
     #[serde(default)]
     pub vault: Option<VaultConfig>,
 
+    #[serde(default)]
+    pub web: WebConfig,
+
     /// Labels that wshm must never apply (blacklist).
     #[serde(default)]
     pub labels_blacklist: Vec<String>,
@@ -540,6 +543,35 @@ impl Default for DaemonConfig {
             apply: false,
             icm_enabled: false,
             icm_topic_prefix: default_icm_prefix(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct WebConfig {
+    #[serde(default = "default_web_enabled")]
+    pub enabled: bool,
+
+    #[serde(default = "default_web_username")]
+    pub username: String,
+
+    #[serde(default)]
+    pub password: Option<String>,
+}
+
+fn default_web_enabled() -> bool {
+    false
+}
+fn default_web_username() -> String {
+    "admin".to_string()
+}
+
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_web_enabled(),
+            username: default_web_username(),
+            password: None,
         }
     }
 }
@@ -1280,6 +1312,7 @@ impl Default for Config {
             export: ExportConfig::default(),
             notify: NotifyConfig::default(),
             vault: None,
+            web: WebConfig::default(),
             labels_blacklist: Vec::new(),
             issues_blacklist: Vec::new(),
             prs_blacklist: Vec::new(),
