@@ -576,6 +576,62 @@ impl Default for WebConfig {
     }
 }
 
+impl WebConfig {
+    /// Resolve the effective password: config.toml > .wshm/credentials > auto-generate.
+    /// If auto-generated, writes to .wshm/credentials and prints to stdout.
+    pub fn resolve_password(&mut self, wshm_dir: &std::path::Path) {
+        if self.password.is_some() {
+            return;
+        }
+
+        let creds_path = wshm_dir.join("credentials");
+
+        // Try reading WEB_PASSWORD from credentials file
+        if let Ok(content) = std::fs::read_to_string(&creds_path) {
+            for line in content.lines() {
+                let line = line.trim();
+                if let Some(val) = line.strip_prefix("WEB_PASSWORD=") {
+                    let val = val.trim();
+                    if !val.is_empty() {
+                        self.password = Some(val.to_string());
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Auto-generate
+        let mut buf = [0u8; 16];
+        if getrandom::getrandom(&mut buf).is_err() {
+            return;
+        }
+        let generated: String = buf.iter().map(|b| format!("{:02x}", b)).collect();
+
+        // Append to credentials file
+        let entry = format!("WEB_PASSWORD={generated}\n");
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&creds_path)
+        {
+            let _ = std::io::Write::write_all(&mut f, entry.as_bytes());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&creds_path, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+
+        eprintln!("Web UI credentials (auto-generated):");
+        eprintln!("  Username: {}", self.username);
+        eprintln!("  Password: {generated}");
+        eprintln!("  Stored in: {}", creds_path.display());
+        eprintln!();
+
+        self.password = Some(generated);
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct BrandingConfig {
     /// Bot display name in comments (default: "wshm")
@@ -1224,6 +1280,11 @@ full_sync_interval_hours = 24
 # {summary}
 # {footer}
 # """
+
+# [web]
+# enabled = true                        # Enable web dashboard on daemon port
+# username = "admin"                    # Basic auth username
+# password = "changeme"                # Basic auth password (or auto-generated in .wshm/credentials)
 
 # [vault]
 # provider = "hashicorp"               # "hashicorp" | "aws" | "azure" | "gcp"

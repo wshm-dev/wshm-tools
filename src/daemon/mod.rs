@@ -35,12 +35,15 @@ pub struct MultiDaemonState {
     pub repos: HashMap<String, Arc<DaemonState>>,
 }
 
-pub async fn run(config: Config, args: DaemonArgs) -> Result<()> {
+pub async fn run(mut config: Config, args: DaemonArgs) -> Result<()> {
     let apply = args.apply || config.daemon.apply;
     let bind = args
         .bind
         .clone()
         .unwrap_or_else(|| config.daemon.bind.clone());
+
+    // Resolve web password (auto-generate if needed)
+    config.web.resolve_password(&config.wshm_dir);
 
     let secret = args
         .secret
@@ -176,11 +179,18 @@ pub async fn run_multi(global: GlobalConfig, args: DaemonArgs) -> Result<()> {
 
     // Build a DaemonState per repo
     let mut repos = HashMap::new();
+    let mut web_password_resolved = false;
     for entry in &global.repos {
-        let config = Config::load_for_repo(&entry.path, &entry.slug)?;
+        let mut config = Config::load_for_repo(&entry.path, &entry.slug)?;
 
         // Ensure .wshm dir exists
         std::fs::create_dir_all(&config.wshm_dir)?;
+
+        // Resolve web password on the first repo (shared across all)
+        if !web_password_resolved {
+            config.web.resolve_password(&config.wshm_dir);
+            web_password_resolved = true;
+        }
 
         let db = Arc::new(Database::open(&config)?);
         let gh = Arc::new(GhClient::new(&config)?);
