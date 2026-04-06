@@ -14,7 +14,7 @@ use axum::{
     http::{header, Request, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use base64::Engine;
@@ -574,6 +574,86 @@ async fn api_license() -> impl IntoResponse {
     }))
 }
 
+/// POST /api/v1/license -- activate a license key from the web UI.
+async fn api_license_activate(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let key = match body.get("license_key").and_then(|v| v.as_str()) {
+        Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+        _ => return (StatusCode::BAD_REQUEST, Json(json!({"error": "license_key is required"}))).into_response(),
+    };
+
+    // Try to activate via the license module
+    match activate_license(&key) {
+        Ok(plan) => Json(json!({
+            "status": "ok",
+            "plan": plan,
+            "message": "License activated successfully",
+        })).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({
+            "status": "error",
+            "message": format!("{e}"),
+        }))).into_response(),
+    }
+}
+
+/// Activate a license key: save to credentials, call API, cache JWT.
+fn activate_license(key: &str) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let machine_id = {
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let username = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_default();
+        let mut hasher = Sha256::new();
+        hasher.update(format!("{hostname}:{username}"));
+        format!("{:x}", hasher.finalize())
+    };
+
+    let resp = ureq::post("https://api.wshm.dev/api/v1/license/activate")
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send_string(
+            &serde_json::json!({
+                "license_key": key,
+                "machine_id": machine_id,
+                "app_version": env!("CARGO_PKG_VERSION"),
+            })
+            .to_string(),
+        )
+        .map_err(|e| format!("Cannot reach license server: {e}"))?;
+
+    let body: serde_json::Value = resp.into_json().map_err(|e| format!("Invalid response: {e}"))?;
+
+    if let Some(token) = body["token"].as_str() {
+        // Cache JWT
+        let path = dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".wshm")
+            .join("license.jwt");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&path, token);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
+
+        let plan = body["license"]["type"]
+            .as_str()
+            .unwrap_or("pro")
+            .to_string();
+        Ok(plan)
+    } else {
+        Err(body["error"].as_str().unwrap_or("Activation failed").to_string())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Router builder
 // ---------------------------------------------------------------------------
@@ -594,7 +674,8 @@ pub fn web_routes(multi: Arc<MultiDaemonState>) -> Router {
         .route("/api/v1/triage", get(api_triage))
         .route("/api/v1/queue", get(api_queue))
         .route("/api/v1/activity", get(api_activity))
-        .route("/api/v1/license", get(api_license));
+        .route("/api/v1/license", get(api_license))
+        .route("/api/v1/license/activate", post(api_license_activate));
 
     let spa_routes = Router::new()
         .route("/", get(handle_spa_root))

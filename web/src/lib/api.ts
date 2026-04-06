@@ -138,3 +138,12 @@ export interface LicenseInfo {
 export function fetchLicense(): Promise<LicenseInfo> {
 	return apiGet<LicenseInfo>('/license');
 }
+
+export async function activateLicense(key: string): Promise<{ status: string; plan?: string; message: string }> {
+	const res = await fetch(`${BASE}/license/activate`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ license_key: key }),
+	});
+	return res.json();
+}

@@ -2,12 +2,16 @@
 	import { onMount } from 'svelte';
 	import { Card, Badge } from 'flowbite-svelte';
 	import { colorConfig, type ColorConfig } from '$lib/colors';
-	import { fetchLicense, type LicenseInfo } from '$lib/api';
+	import { fetchLicense, activateLicense, type LicenseInfo } from '$lib/api';
 
 	let colors: ColorConfig = $state({ ...colorConfig.defaults });
 	colorConfig.subscribe(c => colors = { ...c });
 
 	let license: LicenseInfo | null = $state(null);
+	let licenseKey: string = $state('');
+	let activating: boolean = $state(false);
+	let activateMessage: string | null = $state(null);
+	let activateError: boolean = $state(false);
 
 	function save() {
 		colorConfig.save(colors);
@@ -16,6 +20,29 @@
 	function reset() {
 		colorConfig.reset();
 		colors = { ...colorConfig.defaults };
+	}
+
+	async function handleActivate() {
+		if (!licenseKey.trim()) return;
+		activating = true;
+		activateMessage = null;
+		activateError = false;
+		try {
+			const result = await activateLicense(licenseKey.trim());
+			if (result.status === 'ok') {
+				activateMessage = result.message;
+				activateError = false;
+				licenseKey = '';
+				license = await fetchLicense();
+			} else {
+				activateMessage = result.message;
+				activateError = true;
+			}
+		} catch (e) {
+			activateMessage = e instanceof Error ? e.message : 'Activation failed';
+			activateError = true;
+		}
+		activating = false;
 	}
 
 	onMount(async () => {
@@ -76,17 +103,37 @@
 				</div>
 			</div>
 
-			{#if !license.is_pro}
-				<div class="border-t border-gray-700 pt-3">
-					<p class="text-sm text-gray-400 mb-2">Unlock all features with a Pro license:</p>
-					<a href="https://wshm.dev/pro" target="_blank" class="inline-block rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500">
-						Get wshm Pro
-					</a>
+			<div class="border-t border-gray-700 pt-3">
+				{#if activateMessage}
+					<div class="mb-2 rounded px-2 py-1.5 text-sm {activateError ? 'bg-red-900/30 text-red-400 border border-red-800' : 'bg-green-900/30 text-green-400 border border-green-800'}">
+						{activateMessage}
+					</div>
+				{/if}
+
+				<p class="text-xs text-gray-400 mb-2">{license.is_pro ? 'Update license key:' : 'Enter your license key:'}</p>
+				<form onsubmit={(e) => { e.preventDefault(); handleActivate(); }} class="flex gap-2">
+					<input
+						type="text"
+						bind:value={licenseKey}
+						placeholder="wshm-pro-xxxx-xxxx-xxxx"
+						disabled={activating}
+						class="flex-1 rounded border border-gray-600 bg-gray-900 px-2 py-1.5 text-sm text-gray-200 placeholder-gray-600 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+					/>
+					<button
+						type="submit"
+						disabled={activating || !licenseKey.trim()}
+						class="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-default"
+					>
+						{activating ? 'Activating...' : 'Activate'}
+					</button>
+				</form>
+
+				{#if !license.is_pro}
 					<p class="text-xs text-gray-500 mt-2">
-						Or run: <code class="rounded bg-gray-700 px-1 py-0.5">wshm login --license</code>
+						<a href="https://wshm.dev/pro" target="_blank" class="text-blue-400 hover:text-blue-300">Get a license</a>
 					</p>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		{:else}
 			<p class="text-sm text-gray-500">Loading...</p>
 		{/if}
