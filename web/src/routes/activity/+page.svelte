@@ -1,20 +1,60 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { selectedRepo } from '$lib/stores';
 	import { fetchActivity, type ActivityEntry } from '$lib/api';
 
 	let activities: ActivityEntry[] = $state([]);
 	let error: string | null = $state(null);
+	let sortBy: string = $state('date');
+	let sortAsc: boolean = $state(false);
 
 	function formatTime(dateStr: string): string {
 		return new Date(dateStr).toLocaleString();
 	}
 
-	onMount(async () => {
+	function toggleSort(column: string) {
+		if (sortBy === column) {
+			sortAsc = !sortAsc;
+		} else {
+			sortBy = column;
+			sortAsc = true;
+		}
+	}
+
+	function arrow(column: string): string {
+		if (sortBy !== column) return '';
+		return sortAsc ? 'v' : '^';
+	}
+
+	function arrowClass(column: string): string {
+		return sortBy === column ? 'sort-arrow active' : 'sort-arrow';
+	}
+
+	let sorted = $derived(
+		[...activities].sort((a, b) => {
+			let cmp = 0;
+			switch (sortBy) {
+				case 'date': cmp = a.created_at.localeCompare(b.created_at); break;
+				case 'type': cmp = a.action.localeCompare(b.action); break;
+				default: cmp = 0;
+			}
+			return sortAsc ? cmp : -cmp;
+		})
+	);
+
+	async function load() {
 		try {
+			error = null;
 			activities = await fetchActivity();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load activity';
 		}
+	}
+
+	onMount(() => {
+		load();
+		const unsub = selectedRepo.subscribe(() => { load(); });
+		return unsub;
 	});
 </script>
 
@@ -36,14 +76,14 @@
 		<table>
 			<thead>
 				<tr>
-					<th>Time</th>
-					<th>Action</th>
+					<th class="sortable" onclick={() => toggleSort('date')}>Time <span class={arrowClass('date')}>{arrow('date')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('type')}>Action <span class={arrowClass('type')}>{arrow('type')}</span></th>
 					<th>Target</th>
 					<th>Summary</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each activities as entry}
+				{#each sorted as entry}
 					<tr>
 						<td class="muted nowrap">{formatTime(entry.created_at)}</td>
 						<td>

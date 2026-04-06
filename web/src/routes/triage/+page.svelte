@@ -1,16 +1,59 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { selectedRepo } from '$lib/stores';
 	import { fetchTriage, type TriageResult } from '$lib/api';
 
 	let results: TriageResult[] = $state([]);
 	let error: string | null = $state(null);
+	let sortBy: string = $state('issue_number');
+	let sortAsc: boolean = $state(true);
 
-	onMount(async () => {
+	function toggleSort(column: string) {
+		if (sortBy === column) {
+			sortAsc = !sortAsc;
+		} else {
+			sortBy = column;
+			sortAsc = true;
+		}
+	}
+
+	function arrow(column: string): string {
+		if (sortBy !== column) return '';
+		return sortAsc ? 'v' : '^';
+	}
+
+	function arrowClass(column: string): string {
+		return sortBy === column ? 'sort-arrow active' : 'sort-arrow';
+	}
+
+	let sorted = $derived(
+		[...results].sort((a, b) => {
+			let cmp = 0;
+			switch (sortBy) {
+				case 'issue_number': cmp = a.issue_number - b.issue_number; break;
+				case 'category': cmp = a.category.localeCompare(b.category); break;
+				case 'confidence': cmp = a.confidence - b.confidence; break;
+				case 'priority': cmp = a.priority.localeCompare(b.priority); break;
+				case 'acted_at': cmp = (a.acted_at ?? '').localeCompare(b.acted_at ?? ''); break;
+				default: cmp = 0;
+			}
+			return sortAsc ? cmp : -cmp;
+		})
+	);
+
+	async function load() {
 		try {
+			error = null;
 			results = await fetchTriage();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load triage results';
 		}
+	}
+
+	onMount(() => {
+		load();
+		const unsub = selectedRepo.subscribe(() => { load(); });
+		return unsub;
 	});
 </script>
 
@@ -32,15 +75,15 @@
 		<table>
 			<thead>
 				<tr>
-					<th>Issue</th>
-					<th>Category</th>
-					<th>Confidence</th>
-					<th>Priority</th>
-					<th>Acted At</th>
+					<th class="sortable" onclick={() => toggleSort('issue_number')}>Issue <span class={arrowClass('issue_number')}>{arrow('issue_number')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('category')}>Category <span class={arrowClass('category')}>{arrow('category')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('confidence')}>Confidence <span class={arrowClass('confidence')}>{arrow('confidence')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('priority')}>Priority <span class={arrowClass('priority')}>{arrow('priority')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('acted_at')}>Acted At <span class={arrowClass('acted_at')}>{arrow('acted_at')}</span></th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each results as result}
+				{#each sorted as result}
 					<tr>
 						<td><a href="/issues">#{result.issue_number}</a></td>
 						<td>

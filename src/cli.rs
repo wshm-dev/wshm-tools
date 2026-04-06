@@ -96,6 +96,28 @@ pub enum Command {
 
     /// Interactive TUI dashboard
     Tui,
+
+    /// Migrate data from SQLite to PostgreSQL
+    Migrate(MigrateArgs),
+}
+
+#[derive(clap::Args)]
+pub struct MigrateArgs {
+    /// Target database provider
+    #[arg(long, default_value = "postgresql")]
+    pub to: String,
+
+    /// Target database URI
+    #[arg(long)]
+    pub uri: String,
+
+    /// Migrate all repos from global config (otherwise just current repo)
+    #[arg(long)]
+    pub all: bool,
+
+    /// Path to global config (for --all mode)
+    #[arg(long)]
+    pub config: Option<std::path::PathBuf>,
 }
 
 #[derive(clap::Args)]

@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { selectedRepo } from '$lib/stores';
 	import { fetchIssues, type Issue } from '$lib/api';
 
 	let issues: Issue[] = $state([]);
 	let error: string | null = $state(null);
+	let sortBy: string = $state('number');
+	let sortAsc: boolean = $state(false);
 
 	function timeAgo(dateStr: string): string {
 		const diff = Date.now() - new Date(dateStr).getTime();
@@ -13,12 +16,56 @@
 		return `${days} days ago`;
 	}
 
-	onMount(async () => {
+	function ageDays(dateStr: string): number {
+		return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+	}
+
+	function toggleSort(column: string) {
+		if (sortBy === column) {
+			sortAsc = !sortAsc;
+		} else {
+			sortBy = column;
+			sortAsc = true;
+		}
+	}
+
+	function arrow(column: string): string {
+		if (sortBy !== column) return '';
+		return sortAsc ? 'v' : '^';
+	}
+
+	function arrowClass(column: string): string {
+		return sortBy === column ? 'sort-arrow active' : 'sort-arrow';
+	}
+
+	let sorted = $derived(
+		[...issues].sort((a, b) => {
+			let cmp = 0;
+			switch (sortBy) {
+				case 'number': cmp = a.number - b.number; break;
+				case 'title': cmp = a.title.localeCompare(b.title); break;
+				case 'priority': cmp = (a.priority ?? '').localeCompare(b.priority ?? ''); break;
+				case 'category': cmp = (a.category ?? '').localeCompare(b.category ?? ''); break;
+				case 'age': cmp = ageDays(a.created_at) - ageDays(b.created_at); break;
+				default: cmp = 0;
+			}
+			return sortAsc ? cmp : -cmp;
+		})
+	);
+
+	async function load() {
 		try {
+			error = null;
 			issues = await fetchIssues();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load issues';
 		}
+	}
+
+	onMount(() => {
+		load();
+		const unsub = selectedRepo.subscribe(() => { load(); });
+		return unsub;
 	});
 </script>
 
@@ -40,17 +87,17 @@
 		<table>
 			<thead>
 				<tr>
-					<th>#</th>
-					<th>Title</th>
+					<th class="sortable" onclick={() => toggleSort('number')}># <span class={arrowClass('number')}>{arrow('number')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('title')}>Title <span class={arrowClass('title')}>{arrow('title')}</span></th>
 					<th>State</th>
 					<th>Labels</th>
-					<th>Priority</th>
-					<th>Category</th>
-					<th>Age</th>
+					<th class="sortable" onclick={() => toggleSort('priority')}>Priority <span class={arrowClass('priority')}>{arrow('priority')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('category')}>Category <span class={arrowClass('category')}>{arrow('category')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('age')}>Age <span class={arrowClass('age')}>{arrow('age')}</span></th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each issues as issue}
+				{#each sorted as issue}
 					<tr>
 						<td>{issue.number}</td>
 						<td>{issue.title}</td>

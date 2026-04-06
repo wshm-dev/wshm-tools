@@ -373,6 +373,9 @@ async fn main() -> Result<()> {
 
             pipelines::revert::run(&db, &gh, args.apply).await?;
         }
+        Some(Command::Migrate(args)) => {
+            pipelines::migrate::run(args, &cli).await?;
+        }
         Some(Command::Tui) => {
             // Try single-repo mode first, fallback to global mode
             match config::Config::load(&cli) {

@@ -1,16 +1,57 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { selectedRepo } from '$lib/stores';
 	import { fetchQueue, type QueueEntry } from '$lib/api';
 
 	let entries: QueueEntry[] = $state([]);
 	let error: string | null = $state(null);
+	let sortBy: string = $state('score');
+	let sortAsc: boolean = $state(false);
 
-	onMount(async () => {
+	function toggleSort(column: string) {
+		if (sortBy === column) {
+			sortAsc = !sortAsc;
+		} else {
+			sortBy = column;
+			sortAsc = column === 'number' || column === 'title';
+		}
+	}
+
+	function arrow(column: string): string {
+		if (sortBy !== column) return '';
+		return sortAsc ? 'v' : '^';
+	}
+
+	function arrowClass(column: string): string {
+		return sortBy === column ? 'sort-arrow active' : 'sort-arrow';
+	}
+
+	let sorted = $derived(
+		[...entries].sort((a, b) => {
+			let cmp = 0;
+			switch (sortBy) {
+				case 'score': cmp = a.score - b.score; break;
+				case 'number': cmp = a.pr_number - b.pr_number; break;
+				case 'title': cmp = a.title.localeCompare(b.title); break;
+				default: cmp = 0;
+			}
+			return sortAsc ? cmp : -cmp;
+		})
+	);
+
+	async function load() {
 		try {
+			error = null;
 			entries = await fetchQueue();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load merge queue';
 		}
+	}
+
+	onMount(() => {
+		load();
+		const unsub = selectedRepo.subscribe(() => { load(); });
+		return unsub;
 	});
 </script>
 
@@ -33,9 +74,9 @@
 			<thead>
 				<tr>
 					<th>Rank</th>
-					<th>PR</th>
-					<th>Title</th>
-					<th>Score</th>
+					<th class="sortable" onclick={() => toggleSort('number')}>PR <span class={arrowClass('number')}>{arrow('number')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('title')}>Title <span class={arrowClass('title')}>{arrow('title')}</span></th>
+					<th class="sortable" onclick={() => toggleSort('score')}>Score <span class={arrowClass('score')}>{arrow('score')}</span></th>
 					<th>CI</th>
 					<th>Approvals</th>
 					<th>Conflicts</th>
@@ -43,7 +84,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each entries as entry, i}
+				{#each sorted as entry, i}
 					<tr>
 						<td class="rank">{i + 1}</td>
 						<td>#{entry.pr_number}</td>

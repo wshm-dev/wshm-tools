@@ -1,12 +1,19 @@
+import { get } from 'svelte/store';
+import { selectedRepo } from './stores';
+
 const BASE = '/api/v1';
 
-async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
+function repoParams(): Record<string, string> {
+	const repo = get(selectedRepo);
+	return repo ? { repo } : {};
+}
+
+async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
 	const url = new URL(path, window.location.origin);
 	url.pathname = `${BASE}${path}`;
-	if (params) {
-		for (const [key, value] of Object.entries(params)) {
-			url.searchParams.set(key, value);
-		}
+	const merged = { ...repoParams(), ...params };
+	for (const [key, value] of Object.entries(merged)) {
+		url.searchParams.set(key, value);
 	}
 	const res = await fetch(url.toString());
 	if (!res.ok) {
@@ -15,17 +22,29 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
 	return res.json();
 }
 
-export interface Status {
-	issues_open: number;
-	issues_closed: number;
-	prs_open: number;
-	prs_closed: number;
+export interface RepoInfo {
+	slug: string;
+	open_issues: number;
 	untriaged: number;
+	open_prs: number;
+	unanalyzed: number;
 	conflicts: number;
 	last_sync: string | null;
+	apply: boolean;
+}
+
+export interface Status {
+	open_issues: number;
+	untriaged: number;
+	open_prs: number;
+	unanalyzed: number;
+	conflicts: number;
+	last_sync: string | null;
+	repos: RepoInfo[];
 }
 
 export interface Issue {
+	repo: string;
 	number: number;
 	title: string;
 	state: string;
@@ -37,25 +56,30 @@ export interface Issue {
 }
 
 export interface PullRequest {
+	repo: string;
 	number: number;
 	title: string;
 	state: string;
+	labels: string[];
 	risk: string | null;
 	ci_status: string | null;
-	has_conflicts: boolean;
+	mergeable: boolean | null;
 	created_at: string;
 	updated_at: string;
 }
 
 export interface TriageResult {
+	repo: string;
 	issue_number: number;
 	category: string;
 	confidence: number;
 	priority: string;
+	summary: string | null;
 	acted_at: string | null;
 }
 
 export interface QueueEntry {
+	repo: string;
 	pr_number: number;
 	title: string;
 	score: number;
@@ -75,25 +99,25 @@ export interface ActivityEntry {
 }
 
 export function fetchStatus(): Promise<Status> {
-	return get<Status>('/status');
+	return apiGet<Status>('/status');
 }
 
 export function fetchIssues(state: string = 'open'): Promise<Issue[]> {
-	return get<Issue[]>('/issues', { state });
+	return apiGet<Issue[]>('/issues', { state });
 }
 
 export function fetchPulls(state: string = 'open'): Promise<PullRequest[]> {
-	return get<PullRequest[]>('/pulls', { state });
+	return apiGet<PullRequest[]>('/pulls', { state });
 }
 
 export function fetchTriage(): Promise<TriageResult[]> {
-	return get<TriageResult[]>('/triage');
+	return apiGet<TriageResult[]>('/triage');
 }
 
 export function fetchQueue(): Promise<QueueEntry[]> {
-	return get<QueueEntry[]>('/queue');
+	return apiGet<QueueEntry[]>('/queue');
 }
 
 export function fetchActivity(): Promise<ActivityEntry[]> {
-	return get<ActivityEntry[]>('/activity');
+	return apiGet<ActivityEntry[]>('/activity');
 }

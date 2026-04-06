@@ -1,9 +1,13 @@
+pub mod backend;
 pub mod events;
 pub mod issues;
+pub mod postgres;
 pub mod pulls;
 pub mod schema;
 pub mod sync;
 pub mod triage;
+
+pub use backend::DatabaseBackend;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -72,5 +76,39 @@ impl Database {
     {
         let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
         f(&conn)
+    }
+}
+
+/// Open a database backend based on the config.
+///
+/// - `"sqlite"` (default): opens the local `.wshm/state.db` SQLite database.
+/// - `"postgresql"`: connects to the configured PostgreSQL instance (requires `database-postgres` feature).
+///
+/// Returns the backend as a boxed trait object for uniform usage.
+pub fn open_backend(config: &Config) -> Result<Box<dyn DatabaseBackend>> {
+    let provider = config
+        .database
+        .as_ref()
+        .map(|d| d.provider.as_str())
+        .unwrap_or("sqlite");
+
+    match provider {
+        #[cfg(feature = "database-postgres")]
+        "postgresql" | "postgres" => {
+            let rt = tokio::runtime::Handle::current();
+            let pg = rt.block_on(postgres::PostgresDb::connect(config))?;
+            Ok(Box::new(pg))
+        }
+        #[cfg(not(feature = "database-postgres"))]
+        "postgresql" | "postgres" => {
+            anyhow::bail!(
+                "PostgreSQL backend requested but the 'database-postgres' feature is not enabled. \
+                 Rebuild with: cargo build --features database-postgres"
+            );
+        }
+        "sqlite" | _ => {
+            let db = Database::open(config)?;
+            Ok(Box::new(db))
+        }
     }
 }

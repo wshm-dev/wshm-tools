@@ -26,6 +26,9 @@ export-postgres = ["dep:sqlx"]
 export-mongodb = ["dep:mongodb"]
 export-mysql = ["dep:mysql_async"]
 
+# PostgreSQL as primary database backend (alternative to SQLite)
+database-postgres = ["dep:sqlx"]
+
 # Vault providers
 vault-hashicorp = ["dep:vaultrs"]
 vault-aws = ["dep:aws-sdk-secretsmanager", "dep:aws-config"]

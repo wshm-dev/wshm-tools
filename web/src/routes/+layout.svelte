@@ -1,7 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { onMount } from 'svelte';
+	import { selectedRepo } from '$lib/stores';
+	import { fetchStatus, type RepoInfo } from '$lib/api';
 
 	let { children }: { children: Snippet } = $props();
+
+	let repos: RepoInfo[] = $state([]);
 
 	const navItems = [
 		{ href: '/', label: 'Dashboard' },
@@ -12,6 +17,20 @@
 		{ href: '/activity', label: 'Activity' },
 		{ href: '/settings', label: 'Settings' }
 	];
+
+	function handleRepoChange(event: Event) {
+		const value = (event.target as HTMLSelectElement).value;
+		selectedRepo.set(value === '' ? null : value);
+	}
+
+	onMount(async () => {
+		try {
+			const status = await fetchStatus();
+			repos = status.repos;
+		} catch {
+			// silently ignore — repos list will stay empty
+		}
+	});
 </script>
 
 <div class="app">
@@ -19,6 +38,15 @@
 		<div class="logo">
 			<h1>wshm</h1>
 			<span class="tagline">wishmaster</span>
+		</div>
+		<div class="repo-selector">
+			<label for="repo-select">Repository</label>
+			<select id="repo-select" onchange={handleRepoChange}>
+				<option value="">All repos</option>
+				{#each repos as r}
+					<option value={r.slug}>{r.slug}</option>
+				{/each}
+			</select>
 		</div>
 		<ul>
 			{#each navItems as item}
@@ -74,6 +102,28 @@
 		font-size: 0.8125rem;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
+	}
+
+	:global(th.sortable) {
+		cursor: pointer;
+		user-select: none;
+		white-space: nowrap;
+	}
+
+	:global(th.sortable:hover) {
+		color: #e6edf3;
+	}
+
+	:global(th .sort-arrow) {
+		display: inline-block;
+		width: 1em;
+		text-align: center;
+		color: #484f58;
+		font-size: 0.75rem;
+	}
+
+	:global(th .sort-arrow.active) {
+		color: #58a6ff;
 	}
 
 	:global(tr:hover) {
@@ -174,6 +224,43 @@
 	.tagline {
 		font-size: 0.75rem;
 		color: #484f58;
+	}
+
+	.repo-selector {
+		padding: 0.5rem 1.25rem 0.75rem;
+		border-bottom: 1px solid #21262d;
+		margin-bottom: 0.5rem;
+	}
+
+	.repo-selector label {
+		display: block;
+		font-size: 0.6875rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: #484f58;
+		margin-bottom: 0.375rem;
+	}
+
+	.repo-selector select {
+		width: 100%;
+		background: #0d1117;
+		color: #c9d1d9;
+		border: 1px solid #30363d;
+		border-radius: 0.375rem;
+		padding: 0.375rem 0.5rem;
+		font-size: 0.8125rem;
+		font-family: inherit;
+		cursor: pointer;
+		outline: none;
+	}
+
+	.repo-selector select:focus {
+		border-color: #58a6ff;
+	}
+
+	.repo-selector select option {
+		background: #161b22;
+		color: #c9d1d9;
 	}
 
 	ul {

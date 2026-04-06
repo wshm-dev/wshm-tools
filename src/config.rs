@@ -63,6 +63,10 @@ pub struct Config {
     #[serde(default)]
     pub web: WebConfig,
 
+    /// Database backend: "sqlite" (default) or "postgresql".
+    #[serde(default)]
+    pub database: Option<DatabaseConfig>,
+
     /// Labels that wshm must never apply (blacklist).
     #[serde(default)]
     pub labels_blacklist: Vec<String>,
@@ -629,6 +633,43 @@ impl WebConfig {
         eprintln!();
 
         self.password = Some(generated);
+    }
+}
+
+// ── Database backend config ──────────────────────────────────
+
+/// Configuration for the database backend.
+///
+/// SQLite is the default (zero-config, single-file). PostgreSQL can be used
+/// as an alternative for multi-repo setups or team environments.
+///
+/// ```toml
+/// [database]
+/// provider = "postgresql"          # "sqlite" (default) | "postgresql"
+/// uri = "postgres://user:pass@host/db"
+/// ```
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DatabaseConfig {
+    /// Database provider: "sqlite" (default) or "postgresql".
+    #[serde(default = "default_db_provider")]
+    pub provider: String,
+
+    /// Connection URI for PostgreSQL (e.g. "postgres://user:pass@host/db").
+    /// Ignored for SQLite. Can also be set via DATABASE_URL env var.
+    #[serde(default)]
+    pub uri: Option<String>,
+}
+
+fn default_db_provider() -> String {
+    "sqlite".to_string()
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            provider: default_db_provider(),
+            uri: None,
+        }
     }
 }
 
@@ -1374,6 +1415,7 @@ impl Default for Config {
             notify: NotifyConfig::default(),
             vault: None,
             web: WebConfig::default(),
+            database: None,
             labels_blacklist: Vec::new(),
             issues_blacklist: Vec::new(),
             prs_blacklist: Vec::new(),

@@ -1,16 +1,24 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { selectedRepo } from '$lib/stores';
 	import { fetchStatus, type Status } from '$lib/api';
 
 	let status: Status | null = $state(null);
 	let error: string | null = $state(null);
 
-	onMount(async () => {
+	async function load() {
 		try {
+			error = null;
 			status = await fetchStatus();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load status';
 		}
+	}
+
+	onMount(() => {
+		load();
+		const unsub = selectedRepo.subscribe(() => { load(); });
+		return unsub;
 	});
 </script>
 
@@ -34,11 +42,11 @@
 	<div class="stats-grid">
 		<div class="card stat-card">
 			<div class="stat-label">Open Issues</div>
-			<div class="stat-value">{status?.issues_open ?? '--'}</div>
+			<div class="stat-value">{status?.open_issues ?? '--'}</div>
 		</div>
 		<div class="card stat-card">
 			<div class="stat-label">Open PRs</div>
-			<div class="stat-value">{status?.prs_open ?? '--'}</div>
+			<div class="stat-value">{status?.open_prs ?? '--'}</div>
 		</div>
 		<div class="card stat-card">
 			<div class="stat-label">Untriaged</div>

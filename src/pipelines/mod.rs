@@ -1,6 +1,7 @@
 pub mod autogen;
 pub mod context;
 pub mod improve;
+pub mod migrate;
 
 /// Truncate a string to `max` chars, appending "…" if truncated.
 /// Uses char boundaries to avoid panics on multi-byte UTF-8 input.
