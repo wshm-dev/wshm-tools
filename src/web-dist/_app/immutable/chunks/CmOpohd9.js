@@ -1,0 +1,1 @@
+import{a8 as t,a9 as o,l as e,aa as c,j as u}from"./CmpcrxJM.js";function f(a){e===null&&t(),c&&e.l!==null?l(e).m.push(a):o(()=>{const n=u(a);if(typeof n=="function")return n})}function l(a){var n=a.l;return n.u??(n.u={a:[],b:[],m:[]})}export{f as o};

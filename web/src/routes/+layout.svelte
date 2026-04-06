@@ -61,13 +61,6 @@
 			{#if !collapsed}
 				<span class="text-base font-bold text-gray-100 truncate">wshm</span>
 			{/if}
-			<button
-				onclick={toggleCollapse}
-				title={collapsed ? 'Expand' : 'Collapse'}
-				class="ml-auto text-gray-500 hover:text-gray-200 text-xs"
-			>
-				{collapsed ? '>>' : '<<'}
-			</button>
 		</div>
 
 		{#if !collapsed}
@@ -97,6 +90,19 @@
 					{/if}
 				</a>
 			{/each}
+		</div>
+
+		<div class="border-t border-gray-700 px-3 py-2 flex items-center {collapsed ? 'justify-center' : 'justify-between'}">
+			{#if !collapsed}
+				<span class="text-[0.625rem] text-gray-600">v0.25.0</span>
+			{/if}
+			<button
+				onclick={toggleCollapse}
+				title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+				class="text-gray-500 hover:text-gray-200 text-xs"
+			>
+				{collapsed ? '>>' : '<<'}
+			</button>
 		</div>
 	</nav>
 

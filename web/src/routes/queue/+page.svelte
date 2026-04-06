@@ -4,6 +4,7 @@
 	import { fetchQueue, type QueueEntry } from '$lib/api';
 	import { multiSort, toggleSort as toggle, sortArrow, sortIndex, sortArrowClass, type SortColumn } from '$lib/sort';
 	import { applyFilters } from '$lib/filter';
+	import { paginate, totalPages, PAGE_SIZE } from '$lib/paginate';
 	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge } from 'flowbite-svelte';
 
 	let entries: QueueEntry[] = $state([]);
@@ -34,8 +35,12 @@
 	}));
 
 	let sorted = $derived(multiSort(filtered, sortColumns));
+	let page = $state(0);
+	let pages = $derived(totalPages(sorted.length));
+	let paged = $derived(paginate(sorted, page));
 
 	async function load() {
+		page = 0;
 		try {
 			error = null;
 			entries = await fetchQueue();
@@ -115,7 +120,7 @@
 					<TableBodyCell class="px-2 py-1"><input type="text" bind:value={filters.conflicts} placeholder="filter..." class="w-full rounded border border-gray-600 bg-gray-900 px-1 py-0.5 text-xs text-gray-300 focus:border-blue-500 focus:outline-none" /></TableBodyCell>
 					<TableBodyCell class="px-2 py-1"><input type="text" bind:value={filters.risk} placeholder="filter..." class="w-full rounded border border-gray-600 bg-gray-900 px-1 py-0.5 text-xs text-gray-300 focus:border-blue-500 focus:outline-none" /></TableBodyCell>
 				</TableBodyRow>
-				{#each sorted as entry, i}
+				{#each paged as entry, i}
 					<TableBodyRow>
 						<TableBodyCell class="px-2 py-1.5 mono text-gray-500 font-bold text-sm">{i + 1}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5 mono">#{entry.pr_number}</TableBodyCell>
@@ -154,4 +159,15 @@
 			</TableBody>
 		</Table>
 	</div>
+	{#if pages > 1}
+		<div class="flex items-center justify-between mt-2 text-sm text-gray-400">
+			<span>{sorted.length} results (page {page + 1}/{pages})</span>
+			<div class="flex gap-1">
+				<button onclick={() => page = 0} disabled={page === 0} class="px-2 py-0.5 rounded border border-gray-600 hover:border-blue-500 disabled:opacity-30 disabled:cursor-default text-xs">|&lt;</button>
+				<button onclick={() => page = Math.max(0, page - 1)} disabled={page === 0} class="px-2 py-0.5 rounded border border-gray-600 hover:border-blue-500 disabled:opacity-30 disabled:cursor-default text-xs">&lt;</button>
+				<button onclick={() => page = Math.min(pages - 1, page + 1)} disabled={page >= pages - 1} class="px-2 py-0.5 rounded border border-gray-600 hover:border-blue-500 disabled:opacity-30 disabled:cursor-default text-xs">&gt;</button>
+				<button onclick={() => page = pages - 1} disabled={page >= pages - 1} class="px-2 py-0.5 rounded border border-gray-600 hover:border-blue-500 disabled:opacity-30 disabled:cursor-default text-xs">&gt;|</button>
+			</div>
+		</div>
+	{/if}
 {/if}
