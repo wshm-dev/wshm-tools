@@ -3,7 +3,6 @@
 	import { onMount } from 'svelte';
 	import { selectedRepo } from '$lib/stores';
 	import { fetchStatus, type RepoInfo } from '$lib/api';
-	import { Sidebar, SidebarWrapper, SidebarGroup, SidebarItem } from 'flowbite-svelte';
 	import '../app.css';
 
 	let { children }: { children: Snippet } = $props();
@@ -52,70 +51,59 @@
 	});
 </script>
 
-<div class="dark">
-	<div class="flex min-h-screen bg-gray-900">
-		<aside
-			class="fixed top-0 left-0 bottom-0 z-40 flex-shrink-0 border-r border-gray-700 bg-gray-800 overflow-y-auto transition-[width] duration-150 ease-in-out"
-			style="width: {collapsed ? '56px' : '220px'}"
-		>
-			<div class="flex justify-end p-2">
-				<button
-					onclick={toggleCollapse}
-					title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-					class="rounded border border-gray-600 px-1.5 py-0.5 text-xs text-gray-400 hover:border-blue-500 hover:text-gray-200 mono"
-				>
-					{collapsed ? '>>' : '<<'}
-				</button>
-			</div>
-
-			<div class="flex items-center gap-2 border-b border-gray-700 px-4 pb-4">
-				<img src="/wizard-icon.png" alt="wshm" class="h-8 w-8 flex-shrink-0" />
-				{#if !collapsed}
-					<div>
-						<h1 class="text-xl font-bold text-gray-100 tracking-tight leading-tight">wshm</h1>
-						<span class="text-xs text-gray-500">wishmaster</span>
-					</div>
-				{/if}
-			</div>
-
+<div class="dark bg-gray-900 text-gray-200 min-h-screen">
+	<nav
+		class="fixed top-0 left-0 bottom-0 z-40 flex flex-col border-r border-gray-700 bg-gray-800 overflow-y-auto transition-[width] duration-150"
+		style="width: {collapsed ? '48px' : '200px'}"
+	>
+		<div class="flex items-center gap-2 px-3 py-3 border-b border-gray-700">
+			<img src="/wizard-icon.png" alt="wshm" class="h-7 w-7 flex-shrink-0" />
 			{#if !collapsed}
-				<div class="border-b border-gray-700 px-4 py-3">
-					<label for="repo-select" class="mb-1 block text-[0.6875rem] uppercase tracking-wider text-gray-500">Repository</label>
-					<select
-						id="repo-select"
-						onchange={handleRepoChange}
-						class="w-full rounded-md border border-gray-600 bg-gray-900 px-2 py-1.5 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
-					>
-						<option value="">All repos</option>
-						{#each repos as r}
-							<option value={r.slug}>{r.slug}</option>
-						{/each}
-					</select>
-				</div>
+				<span class="text-base font-bold text-gray-100 truncate">wshm</span>
 			{/if}
+			<button
+				onclick={toggleCollapse}
+				title={collapsed ? 'Expand' : 'Collapse'}
+				class="ml-auto text-gray-500 hover:text-gray-200 text-xs"
+			>
+				{collapsed ? '>>' : '<<'}
+			</button>
+		</div>
 
-			<Sidebar class="w-full">
-				<SidebarWrapper class="bg-transparent px-0 py-2">
-					<SidebarGroup>
-						{#each navItems as item}
-							<SidebarItem href={item.href} label={collapsed ? '' : item.label} class="text-gray-400 hover:bg-gray-700 hover:text-gray-100 rounded-none px-4 py-2 text-sm {collapsed ? 'justify-center' : ''}">
-								{#snippet icon()}
-									{#if collapsed}
-										<span class="mono text-xs font-bold">[{item.icon}]</span>
-									{/if}
-								{/snippet}
-							</SidebarItem>
-						{/each}
-					</SidebarGroup>
-				</SidebarWrapper>
-			</Sidebar>
-		</aside>
+		{#if !collapsed}
+			<div class="px-3 py-2 border-b border-gray-700">
+				<select
+					onchange={handleRepoChange}
+					class="w-full rounded border border-gray-600 bg-gray-900 px-1.5 py-1 text-xs text-gray-300 focus:border-blue-500 focus:outline-none"
+				>
+					<option value="">All repos</option>
+					{#each repos as r}
+						<option value={r.slug}>{r.slug}</option>
+					{/each}
+				</select>
+			</div>
+		{/if}
 
-		<main
-			class="flex-1 p-8 transition-[margin-left] duration-150 ease-in-out"
-			style="margin-left: {collapsed ? '56px' : '220px'}"
-		>
-			{@render children()}
-		</main>
-	</div>
+		<div class="flex-1 py-1">
+			{#each navItems as item}
+				<a
+					href={item.href}
+					class="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:bg-gray-700 hover:text-gray-100 transition-colors {collapsed ? 'justify-center' : ''}"
+					title={item.label}
+				>
+					<span class="font-mono text-xs font-bold text-gray-500 w-5 text-center">{item.icon}</span>
+					{#if !collapsed}
+						<span class="truncate">{item.label}</span>
+					{/if}
+				</a>
+			{/each}
+		</div>
+	</nav>
+
+	<main
+		class="transition-[margin-left] duration-150 p-4"
+		style="margin-left: {collapsed ? '48px' : '200px'}"
+	>
+		{@render children()}
+	</main>
 </div>
