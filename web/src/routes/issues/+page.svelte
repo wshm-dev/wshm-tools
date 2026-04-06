@@ -7,6 +7,10 @@
 	import { paginate, totalPages, PAGE_SIZE } from '$lib/paginate';
 	import { goto } from '$app/navigation';
 	import { Card, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge } from 'flowbite-svelte';
+	import { colorConfig, prStatusBorder, priorityColor, categoryColor, type ColorConfig } from '$lib/colors';
+
+	let colors: ColorConfig = $state(colorConfig.defaults);
+	colorConfig.subscribe(c => colors = c);
 
 	let issues: Issue[] = $state([]);
 	let error: string | null = $state(null);
@@ -117,26 +121,28 @@
 				</TableBodyRow>
 				{#each paged as issue}
 					<TableBodyRow
-						class="cursor-pointer {issue.pr_status === 'pr_ready' ? 'bg-green-900/20 border-l-2 border-l-green-500' : issue.pr_status === 'has_pr' ? 'bg-blue-900/20 border-l-2 border-l-blue-500' : 'border-l-2 border-l-red-800'}"
+						class="cursor-pointer"
+						style="border-left: 3px solid {prStatusBorder(colors, issue.pr_status ?? 'no_pr')};"
 						onclick={() => goto(`/issues/${issue.number}`)}
 					>
 						<TableBodyCell class="px-2 py-1.5 mono">{issue.number}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5 truncate">{issue.title}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5">
-							<Badge color={issue.pr_status === 'pr_ready' ? 'green' : issue.pr_status === 'has_pr' ? 'blue' : 'dark'}>
+							<span class="inline-block rounded px-1.5 py-0.5 text-xs font-medium" style="background-color: {prStatusBorder(colors, issue.pr_status ?? 'no_pr')}40; color: {prStatusBorder(colors, issue.pr_status ?? 'no_pr')}; border: 1px solid {prStatusBorder(colors, issue.pr_status ?? 'no_pr')}80;">
 								{issue.pr_status === 'pr_ready' ? 'PR ready' : issue.pr_status === 'has_pr' ? 'PR open' : 'No PR'}
-							</Badge>
-						</TableBodyCell>
-						<TableBodyCell class="px-2 py-1.5">
-							<Badge color={issue.state === 'open' ? 'green' : 'red'}>{issue.state}</Badge>
+							</span>
 						</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5">
 							{#each issue.labels as label}
 								<Badge color="blue" class="mr-1">{label}</Badge>
 							{/each}
 						</TableBodyCell>
-						<TableBodyCell class="px-2 py-1.5">{issue.priority ?? '-'}</TableBodyCell>
-						<TableBodyCell class="px-2 py-1.5">{issue.category ?? '-'}</TableBodyCell>
+						<TableBodyCell class="px-2 py-1.5">
+							<span class="font-medium" style="color: {priorityColor(colors, issue.priority)}">{issue.priority ?? '-'}</span>
+						</TableBodyCell>
+						<TableBodyCell class="px-2 py-1.5">
+							<span style="color: {categoryColor(colors, issue.category)}">{issue.category ?? '-'}</span>
+						</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5 text-gray-500 mono">{timeAgo(issue.created_at)}</TableBodyCell>
 					</TableBodyRow>
 				{:else}
