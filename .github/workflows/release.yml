@@ -60,10 +60,18 @@ jobs:
         if: matrix.deps != ''
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.deps }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Web UI
+        run: cd web && npm ci && npm run build
+
       - name: Build
         env:
           WSHM_TELEMETRY_URL: https://telemetry.wshm.dev/api/v1/telemetry
-        run: cargo build --release --target ${{ matrix.target }} ${{ matrix.features != '' && format('--features {0}', matrix.features) || '' }}
+        run: cargo build --release --target ${{ matrix.target }} --features "export-postgres${{ matrix.features != '' && format(',{0}', matrix.features) || '' }}"
 
       - name: Package (tar.gz)
         if: matrix.archive == 'tar.gz'

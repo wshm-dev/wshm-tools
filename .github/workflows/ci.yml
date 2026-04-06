@@ -41,6 +41,14 @@ jobs:
         if: matrix.deps != ''
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.deps }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Web UI
+        run: cd web && npm ci && npm run build
+
       - name: Cache cargo
         uses: actions/cache@v4
         with:
