@@ -139,6 +139,62 @@ export function fetchLicense(): Promise<LicenseInfo> {
 	return apiGet<LicenseInfo>('/license');
 }
 
+export interface ReviewEntry {
+	repo: string;
+	pr_number: number;
+	file: string;
+	line: number;
+	comment: string;
+	severity: string;
+	created_at: string;
+}
+
+export function fetchReviews(): Promise<ReviewEntry[]> {
+	return apiGet<ReviewEntry[]>('/reviews');
+}
+
+export interface ConflictEntry {
+	repo: string;
+	pr_number: number;
+	title: string;
+	conflict_files: string[];
+	status: string;
+	detected_at: string;
+}
+
+export function fetchConflicts(): Promise<ConflictEntry[]> {
+	return apiGet<ConflictEntry[]>('/conflicts');
+}
+
+export interface ImprovementEntry {
+	repo: string;
+	title: string;
+	category: string;
+	effort: string;
+	files: string[];
+	status: string;
+}
+
+export function fetchImprovements(): Promise<ImprovementEntry[]> {
+	return apiGet<ImprovementEntry[]>('/improvements');
+}
+
+export interface ChangelogItem {
+	type: string;
+	description: string;
+	pr_number: number | null;
+}
+
+export interface ChangelogEntry {
+	version: string;
+	date: string;
+	items: ChangelogItem[];
+}
+
+export function fetchChangelog(): Promise<ChangelogEntry[]> {
+	return apiGet<ChangelogEntry[]>('/changelog');
+}
+
 export async function activateLicense(key: string): Promise<{ status: string; plan?: string; message: string }> {
 	const res = await fetch(`${BASE}/license/activate`, {
 		method: 'POST',

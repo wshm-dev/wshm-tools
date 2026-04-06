@@ -497,6 +497,26 @@ async fn api_activity(
     Json(entries)
 }
 
+/// GET /api/v1/reviews -- stub: inline code review comments (Pro).
+async fn api_reviews() -> impl IntoResponse {
+    Json(json!([]))
+}
+
+/// GET /api/v1/conflicts -- stub: conflict resolution status (Pro).
+async fn api_conflicts() -> impl IntoResponse {
+    Json(json!([]))
+}
+
+/// GET /api/v1/improvements -- stub: AI improvement proposals (Pro).
+async fn api_improvements() -> impl IntoResponse {
+    Json(json!([]))
+}
+
+/// GET /api/v1/changelog -- stub: auto-generated changelog (Pro).
+async fn api_changelog() -> impl IntoResponse {
+    Json(json!([]))
+}
+
 // ---------------------------------------------------------------------------
 // SPA serving
 // ---------------------------------------------------------------------------
@@ -675,7 +695,11 @@ pub fn web_routes(multi: Arc<MultiDaemonState>) -> Router {
         .route("/api/v1/queue", get(api_queue))
         .route("/api/v1/activity", get(api_activity))
         .route("/api/v1/license", get(api_license))
-        .route("/api/v1/license/activate", post(api_license_activate));
+        .route("/api/v1/license/activate", post(api_license_activate))
+        .route("/api/v1/reviews", get(api_reviews))
+        .route("/api/v1/conflicts", get(api_conflicts))
+        .route("/api/v1/improvements", get(api_improvements))
+        .route("/api/v1/changelog", get(api_changelog));
 
     let spa_routes = Router::new()
         .route("/", get(handle_spa_root))

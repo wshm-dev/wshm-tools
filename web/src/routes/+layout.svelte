@@ -11,14 +11,18 @@
 	let collapsed: boolean = $state(false);
 
 	const navItems = [
-		{ href: '/', label: 'Dashboard', icon: 'D' },
-		{ href: '/issues', label: 'Issues', icon: 'I' },
-		{ href: '/prs', label: 'Pull Requests', icon: 'P' },
-		{ href: '/triage', label: 'Triage', icon: 'T' },
-		{ href: '/queue', label: 'Merge Queue', icon: 'Q' },
-		{ href: '/activity', label: 'Activity', icon: 'A' },
-		{ href: '/actions', label: 'Actions', icon: '!' },
-		{ href: '/settings', label: 'Settings', icon: 'S' }
+		{ href: '/', label: 'Dashboard', icon: 'D', pro: false },
+		{ href: '/issues', label: 'Issues', icon: 'I', pro: false },
+		{ href: '/prs', label: 'Pull Requests', icon: 'P', pro: false },
+		{ href: '/triage', label: 'Triage', icon: 'T', pro: false },
+		{ href: '/queue', label: 'Merge Queue', icon: 'Q', pro: false },
+		{ href: '/review', label: 'Review', icon: 'R', pro: true },
+		{ href: '/conflicts', label: 'Conflicts', icon: 'C', pro: true },
+		{ href: '/improve', label: 'Improve', icon: '+', pro: true },
+		{ href: '/changelog', label: 'Changelog', icon: 'L', pro: true },
+		{ href: '/activity', label: 'Activity', icon: 'A', pro: false },
+		{ href: '/actions', label: 'Actions', icon: '!', pro: false },
+		{ href: '/settings', label: 'Settings', icon: 'S', pro: false }
 	];
 
 	function handleRepoChange(event: Event) {
@@ -87,6 +91,9 @@
 					<span class="font-mono text-xs font-bold text-gray-500 w-5 text-center">{item.icon}</span>
 					{#if !collapsed}
 						<span class="truncate">{item.label}</span>
+						{#if item.pro}
+							<span class="ml-auto rounded bg-blue-900 px-1 py-0.5 text-[0.5rem] font-bold leading-none text-blue-300">PRO</span>
+						{/if}
 					{/if}
 				</a>
 			{/each}
