@@ -682,7 +682,7 @@ pub struct BrandingConfig {
     #[serde(default = "default_bot_name")]
     pub name: String,
 
-    /// Bot URL linked in footers (default: "https://github.com/wshm-dev/wshm-tools")
+    /// Bot URL linked in footers (default: "https://github.com/wshm-dev/wshm")
     #[serde(default = "default_bot_url")]
     pub url: String,
 
@@ -728,7 +728,7 @@ impl Default for BrandingConfig {
         Self {
             name: default_bot_name(),
             url: default_bot_url(),
-            avatar_url: Some("https://raw.githubusercontent.com/wshm-dev/wshm-tools/main/assets/wizard-icon.png".to_string()),
+            avatar_url: Some("https://raw.githubusercontent.com/wshm-dev/wshm/main/assets/wizard-icon.png".to_string()),
             tagline: None,
             command_prefix: default_command_prefix(),
             footer_template: None,
@@ -782,7 +782,7 @@ fn default_bot_name() -> String {
     "wshm".to_string()
 }
 fn default_bot_url() -> String {
-    "https://github.com/wshm-dev/wshm-tools".to_string()
+    "https://github.com/wshm-dev/wshm".to_string()
 }
 fn default_command_prefix() -> String {
     "/wshm".to_string()
@@ -1324,7 +1324,7 @@ full_sync_interval_hours = 24
 
 # [branding]
 # name = "wshm"                       # Bot display name in comments
-# url = "https://github.com/wshm-dev/wshm-tools"  # Link in comment footers
+# url = "https://github.com/wshm-dev/wshm"        # Link in comment footers
 # avatar_url = "https://example.com/logo.png"   # Optional avatar in headers
 # tagline = "AI-powered repo assistant"          # Optional tagline
 # command_prefix = "/wshm"             # Slash command prefix
