@@ -93,6 +93,9 @@ pub enum Command {
 
     /// Manage anonymous telemetry consent (GDPR)
     Telemetry(TelemetryArgs),
+
+    /// Show daily digest summary (same data as Discord notifications)
+    Summary,
 }
 
 #[derive(clap::Args)]

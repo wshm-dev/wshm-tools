@@ -547,6 +547,101 @@ fn format_teams(summary: &NotifySummary) -> serde_json::Value {
     })
 }
 
+fn format_terminal(summary: &NotifySummary) -> String {
+    let mut output = String::new();
+
+    // Header
+    output.push_str(&format!("wshm — {}\n\n", summary.repo));
+
+    // Stats
+    output.push_str(&format!(
+        "Issues: {} open ({} untriaged)\n",
+        summary.open_issues, summary.untriaged_issues
+    ));
+    output.push_str(&format!(
+        "Pull Requests: {} open ({} unanalyzed)\n",
+        summary.open_prs, summary.unanalyzed_prs
+    ));
+    if summary.conflicts > 0 {
+        output.push_str(&format!("Conflicts: {}\n", summary.conflicts));
+    }
+
+    // Action Required
+    if !summary.high_priority_issues.is_empty() {
+        output.push_str("\nAction Required:\n");
+        for i in summary.high_priority_issues.iter().take(10) {
+            let prio = i.priority.as_deref().unwrap_or("?");
+            let age = if i.age_days > 0 {
+                format!(" ({}d)", i.age_days)
+            } else {
+                String::new()
+            };
+            output.push_str(&format!(
+                "  #{} {}{} — {}\n",
+                i.number, prio, age, i.title
+            ));
+        }
+    }
+
+    // Attention PRs
+    if !summary.high_risk_prs.is_empty() {
+        output.push_str("\nAttention PRs:\n");
+        for p in summary.high_risk_prs.iter().take(10) {
+            let mut tags = Vec::new();
+            if let Some(ref risk) = p.risk_level {
+                tags.push(format!("risk:{risk}"));
+            }
+            if p.has_conflicts {
+                tags.push("CONFLICT".to_string());
+            }
+            output.push_str(&format!(
+                "  #{} [{}] {}\n",
+                p.number,
+                tags.join(", "),
+                p.title
+            ));
+        }
+    }
+
+    // Issues TODO
+    if !summary.top_issues.is_empty() {
+        output.push_str("\nIssues TODO:\n");
+        for i in &summary.top_issues {
+            let prio = i.priority.as_deref().unwrap_or("-");
+            let cat = i.category.as_deref().unwrap_or("-");
+            let age = if i.age_days > 0 {
+                format!(" ({}d)", i.age_days)
+            } else {
+                String::new()
+            };
+            output.push_str(&format!(
+                "  #{} {}/{}{} — {}\n",
+                i.number, prio, cat, age, i.title
+            ));
+        }
+    }
+
+    // PRs TODO
+    if !summary.top_prs.is_empty() {
+        output.push_str("\nPRs TODO:\n");
+        for p in &summary.top_prs {
+            let risk = p.risk_level.as_deref().unwrap_or("-");
+            let age = if p.age_days > 0 {
+                format!(" ({}d)", p.age_days)
+            } else {
+                String::new()
+            };
+            let conflict = if p.has_conflicts { " CONFLICT" } else { "" };
+            output.push_str(&format!(
+                "  #{} {}{}{} — {}\n",
+                p.number, risk, conflict, age, p.title
+            ));
+        }
+    }
+
+    output
+}
+
 // ── Sending ───────────────────────────────────────────────────
 
 async fn send_discord(
@@ -741,6 +836,19 @@ pub async fn run(config: &Config, db: &Database, json: bool) -> Result<()> {
         } else {
             println!("Notifications: {sent} sent, {errors} failed.");
         }
+    }
+
+    Ok(())
+}
+
+/// Display the daily summary in the terminal (same data as notification targets).
+pub fn show_summary(config: &Config, db: &Database, json: bool) -> Result<()> {
+    let summary = build_summary(config, db)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&summary)?);
+    } else {
+        print!("{}", format_terminal(&summary));
     }
 
     Ok(())

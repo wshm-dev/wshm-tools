@@ -288,6 +288,16 @@ pub async fn run_oss(cli: Cli) -> Result<()> {
         Some(Command::Telemetry(args)) => {
             handle_telemetry_command(args)?;
         }
+        Some(Command::Summary) => {
+            let config = crate::Config::load(&cli)?;
+            let db = crate::Database::open(&config)?;
+            if !cli.offline {
+                let gh = crate::Client::new(&config)?;
+                crate::github::sync::incremental_sync(&gh, &db, "issues").await?;
+                crate::github::sync::incremental_sync(&gh, &db, "pulls").await?;
+            }
+            crate::pipelines::notify::show_summary(&config, &db, cli.json)?;
+        }
         Some(Command::Tui) => match crate::Config::load(&cli) {
             Ok(config) => {
                 let db = crate::Database::open(&config)?;
