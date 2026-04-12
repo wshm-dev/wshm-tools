@@ -5,10 +5,6 @@ edition = "2021"
 description = "Core library for wshm"
 license = "SSPL-1.0"
 
-[[bin]]
-name = "wshm"
-path = "src/bin/wshm.rs"
-
 [features]
 default = []
 metal = ["llama-cpp-2/metal"]

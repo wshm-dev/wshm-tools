@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 
 /// Repo for release downloads. Hardcoded for supply-chain safety.
-const REPO: &str = "wshm-dev/wshm";
+/// Points to homebrew-tap which hosts wshm-pro binaries.
+const REPO: &str = "wshm-dev/homebrew-tap";
 
 /// Current version from Cargo.toml
 pub fn current_version() -> &'static str {
