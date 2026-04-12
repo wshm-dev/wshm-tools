@@ -80,7 +80,9 @@ pub async fn run(
         }
         issues
     } else {
-        db.get_untriaged_issues()?
+        // Get issues needing triage (never triaged OR content changed)
+        // Process in batches of 20 to avoid overwhelming the LLM API
+        db.get_issues_needing_triage(20)?
     };
 
     if issues.is_empty() {
@@ -96,6 +98,8 @@ pub async fn run(
 
     if is_retriage {
         info!("Re-triaging {} previously triaged issues", issues.len());
+    } else {
+        info!("Triaging {} issues (batch size: 20 max)", issues.len());
     }
 
     let existing_issues = db.get_open_issues()?;

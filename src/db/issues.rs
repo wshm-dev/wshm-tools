@@ -54,6 +54,12 @@ impl Database {
         self.with_conn(get_untriaged_issues)
     }
 
+    /// Get issues that need triage: either never triaged OR content changed since last triage.
+    /// Returns up to `limit` issues prioritized by reaction count.
+    pub fn get_issues_needing_triage(&self, limit: usize) -> Result<Vec<Issue>> {
+        self.with_conn(|conn| get_issues_needing_triage(conn, limit))
+    }
+
     /// Merge new labels into the issue's existing labels in the DB cache (additive, no overwrite).
     pub fn merge_issue_labels(&self, number: u64, add: &[String], remove: &[String]) -> Result<()> {
         self.with_conn(|conn| {
@@ -160,11 +166,62 @@ pub fn get_untriaged_issues(conn: &Connection) -> Result<Vec<Issue>> {
          FROM issues i
          LEFT JOIN triage_results t ON i.number = t.issue_number
          WHERE i.state = 'open' AND t.issue_number IS NULL
-         ORDER BY i.number DESC",
+         ORDER BY i.reactions_total DESC, i.number ASC
+         LIMIT 20",
     )?;
 
     let issues = stmt.query_map([], row_to_issue)?.collect::<Result<Vec<_>, _>>()?;
     Ok(issues)
+}
+
+/// Get issues that need triage: either never triaged OR content changed since last triage.
+/// Returns up to `limit` issues prioritized by reaction count, then issue number.
+pub fn get_issues_needing_triage(conn: &Connection, limit: usize) -> Result<Vec<Issue>> {
+    use crate::db::schema::compute_issue_hash;
+
+    // First, get all open issues with their triage status
+    let mut stmt = conn.prepare(
+        "SELECT i.number, i.title, i.body, i.state, i.labels, i.author, i.created_at, i.updated_at, i.reactions_plus1, i.reactions_total,
+                t.content_hash
+         FROM issues i
+         LEFT JOIN triage_results t ON i.number = t.issue_number
+         WHERE i.state = 'open'
+         ORDER BY i.reactions_total DESC, i.number ASC",
+    )?;
+
+    let mut issues_needing_triage = Vec::new();
+    let rows = stmt.query_map([], |row| {
+        let issue = Issue {
+            number: row.get(0)?,
+            title: row.get(1)?,
+            body: row.get(2)?,
+            state: row.get(3)?,
+            labels: parse_labels_json(&row.get::<_, String>(4)?),
+            author: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+            reactions_plus1: row.get(8)?,
+            reactions_total: row.get(9)?,
+        };
+        let stored_hash: Option<String> = row.get(10)?;
+        Ok((issue, stored_hash))
+    })?;
+
+    for row in rows {
+        if issues_needing_triage.len() >= limit {
+            break;
+        }
+
+        let (issue, stored_hash) = row?;
+        let current_hash = compute_issue_hash(&issue.title, issue.body.as_deref(), &issue.labels);
+
+        // Need triage if: never triaged (NULL hash) OR content changed (hash mismatch)
+        if stored_hash.is_none() || stored_hash.as_deref() != Some(current_hash.as_str()) {
+            issues_needing_triage.push(issue);
+        }
+    }
+
+    Ok(issues_needing_triage)
 }
 
 #[cfg(test)]
@@ -220,5 +277,57 @@ mod tests {
 
         let untriaged = db.get_untriaged_issues().unwrap();
         assert_eq!(untriaged.len(), 1);
+    }
+
+    #[test]
+    fn test_get_issues_needing_triage() {
+        use crate::ai::schemas::IssueClassification;
+        use crate::db::schema::compute_issue_hash;
+
+        let db = Database::open_memory().unwrap();
+
+        // Issue 1: never triaged
+        let mut issue1 = test_issue();
+        issue1.number = 1;
+        db.upsert_issue(&issue1).unwrap();
+
+        // Issue 2: triaged, content unchanged
+        let mut issue2 = test_issue();
+        issue2.number = 2;
+        issue2.title = "Already triaged".to_string();
+        db.upsert_issue(&issue2).unwrap();
+        let classification = IssueClassification {
+            category: "bug".to_string(),
+            confidence: 0.9,
+            priority: Some("high".to_string()),
+            summary: "Test summary".to_string(),
+            suggested_labels: vec![],
+            is_duplicate_of: None,
+            is_simple_fix: false,
+            relevant_files: vec![],
+        };
+        let hash2 = compute_issue_hash(&issue2.title, issue2.body.as_deref(), &issue2.labels);
+        db.upsert_triage_result_with_hash(&classification, 2, Some(&hash2)).unwrap();
+
+        // Issue 3: triaged, but content changed
+        let mut issue3 = test_issue();
+        issue3.number = 3;
+        issue3.title = "Content changed".to_string();
+        db.upsert_issue(&issue3).unwrap();
+        let hash3_old = compute_issue_hash(&issue3.title, issue3.body.as_deref(), &issue3.labels);
+        db.upsert_triage_result_with_hash(&classification, 3, Some(&hash3_old)).unwrap();
+
+        // Now modify issue 3's title (simulates content change)
+        issue3.title = "Content changed - UPDATED".to_string();
+        db.upsert_issue(&issue3).unwrap();
+
+        let needing_triage = db.get_issues_needing_triage(10).unwrap();
+
+        // Should return issue 1 (never triaged) and issue 3 (content changed)
+        assert_eq!(needing_triage.len(), 2);
+        let numbers: Vec<u64> = needing_triage.iter().map(|i| i.number).collect();
+        assert!(numbers.contains(&1));
+        assert!(numbers.contains(&3));
+        assert!(!numbers.contains(&2)); // Issue 2 unchanged, should not be returned
     }
 }

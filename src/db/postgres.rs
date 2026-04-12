@@ -306,11 +306,58 @@ mod inner {
                      FROM {schema}.issues i
                      LEFT JOIN {schema}.triage_results t ON i.number = t.issue_number
                      WHERE i.state = 'open' AND t.issue_number IS NULL
-                     ORDER BY i.number DESC",
+                     ORDER BY i.reactions_total DESC, i.number ASC
+                     LIMIT 20",
                     schema = self.schema
                 );
                 let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
                 Ok(rows.iter().map(row_to_issue).collect())
+            })
+        }
+
+        fn get_issues_needing_triage(&self, limit: usize) -> Result<Vec<Issue>> {
+            self.block_on(async {
+                use crate::db::schema::compute_issue_hash;
+
+                let sql = format!(
+                    "SELECT i.number, i.title, i.body, i.state, i.labels, i.author, i.created_at, i.updated_at, i.reactions_plus1, i.reactions_total,
+                            t.content_hash
+                     FROM {schema}.issues i
+                     LEFT JOIN {schema}.triage_results t ON i.number = t.issue_number
+                     WHERE i.state = 'open'
+                     ORDER BY i.reactions_total DESC, i.number ASC",
+                    schema = self.schema
+                );
+                let rows = sqlx::query(&sql).fetch_all(&self.pool).await?;
+
+                let mut issues_needing_triage = Vec::new();
+                for row in rows {
+                    if issues_needing_triage.len() >= limit {
+                        break;
+                    }
+
+                    let issue = Issue {
+                        number: row.get::<i64, _>("number") as u64,
+                        title: row.get("title"),
+                        body: row.get("body"),
+                        state: row.get("state"),
+                        labels: parse_labels_json(&row.get::<String, _>("labels")),
+                        author: row.get("author"),
+                        created_at: row.get("created_at"),
+                        updated_at: row.get("updated_at"),
+                        reactions_plus1: row.get::<i32, _>("reactions_plus1") as u32,
+                        reactions_total: row.get::<i32, _>("reactions_total") as u32,
+                    };
+                    let stored_hash: Option<String> = row.get("content_hash");
+                    let current_hash = compute_issue_hash(&issue.title, issue.body.as_deref(), &issue.labels);
+
+                    // Need triage if: never triaged (NULL hash) OR content changed (hash mismatch)
+                    if stored_hash.is_none() || stored_hash.as_deref() != Some(current_hash.as_str()) {
+                        issues_needing_triage.push(issue);
+                    }
+                }
+
+                Ok(issues_needing_triage)
             })
         }
 
