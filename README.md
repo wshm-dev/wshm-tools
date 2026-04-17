@@ -128,10 +128,9 @@ One static binary. No SaaS dependency. Runs where your code lives.
 | Platform       | How                                                              |
 |----------------|------------------------------------------------------------------|
 | **VM / VPS**   | systemd service, auto-update via Homebrew, any Linux             |
-| **Docker**     | `docker run ghcr.io/wshm-dev/wshm:latest daemon`, rootless Podman OK |
-| **Kubernetes** | Single-pod deployment, ConfigMap for `config.toml`               |
-| **GitHub Action** | No server needed, runs on every `issues` / `pull_request` event |
 | **Local dev**  | `wshm tui` / `wshm triage` — works offline with Ollama           |
+
+Docker images, Kubernetes manifests, and a GitHub Action are planned — follow [#22](https://github.com/wshm-dev/wshm/issues/22).
 
 Forge support: **GitHub** (personal + org), **GitLab** (.com + self-managed), **Gitea / Forgejo / Codeberg**, **Azure DevOps** (Services + Server).
 
@@ -243,52 +242,37 @@ wshm daemon --config /etc/wshm/global.toml --poll
 
 ### Install
 
-#### Homebrew (macOS + Linux)
+> **Heads up** — the current release (`v0.27.0`) only ships prebuilt binaries for **Linux x86_64** and **Windows x86_64**. Full coverage (Intel Mac, Apple Silicon, ARM Linux) arrives with the next tagged release once the 5-target build matrix runs. Track [#22](https://github.com/wshm-dev/wshm/issues/22).
+
+#### Linux x86_64 — Homebrew
 
 ```bash
 brew tap wshm-dev/tap
 brew install wshm
 ```
 
-#### Shell installer (macOS + Linux)
-
-```bash
-curl -fsSL https://wshm.dev/install.sh | sh
-```
-
-#### Cargo (any platform with a Rust toolchain)
-
-```bash
-cargo install wshm-core --bin wshm
-```
-
-#### Docker
-
-```bash
-docker pull ghcr.io/wshm-dev/wshm:latest
-```
-
-#### Windows
+#### Windows x86_64 — direct download
 
 ```powershell
-# PowerShell — download and extract the latest release
-Invoke-WebRequest -Uri https://github.com/wshm-dev/wshm/releases/latest/download/wshm-x86_64-pc-windows-msvc.zip -OutFile wshm.zip
+Invoke-WebRequest -Uri https://github.com/wshm-dev/wshm/releases/download/v0.27.0/wshm-x86_64-pc-windows-msvc.zip -OutFile wshm.zip
 Expand-Archive wshm.zip -DestinationPath $env:USERPROFILE\.wshm\bin
+# then add %USERPROFILE%\.wshm\bin to your PATH
 ```
 
-Or install from source with `cargo install wshm-core --bin wshm` (requires the [Rust toolchain](https://rustup.rs)).
+#### Everything else
 
-Native Scoop / winget manifests are not yet published — follow [#TBD](https://github.com/wshm-dev/wshm/issues) for updates.
+- **Intel Mac, Apple Silicon, ARM Linux** — arriving with the next release; `brew install wshm` will work on all of them once v0.28.0 ships.
+- **`cargo install`, install.sh, Docker, Scoop/winget** — not yet published, tracked in [#22](https://github.com/wshm-dev/wshm/issues/22).
 
-#### Supported platforms
+#### Release pipeline
 
-| OS      | Architectures         | Install methods                         |
-|---------|-----------------------|-----------------------------------------|
-| macOS   | x86_64 (Intel), aarch64 (Apple Silicon) | Homebrew, shell installer, Cargo, Docker |
-| Linux   | x86_64, aarch64 (GNU) | Homebrew, shell installer, Cargo, Docker |
-| Windows | x86_64                | GitHub Releases (zip), Cargo            |
-
-Windows is a fully supported tier-1 target: CI builds and tests every commit on `windows-latest`, and every release ships a `wshm-x86_64-pc-windows-msvc.zip`. Homebrew and the `install.sh` shell script are macOS/Linux only by design.
+| Target                       | Prebuilt today | After v0.28.0 |
+|------------------------------|----------------|---------------|
+| `x86_64-unknown-linux-gnu`   | ✓              | ✓             |
+| `x86_64-pc-windows-msvc`     | ✓              | ✓             |
+| `x86_64-apple-darwin`        | ✗              | ✓             |
+| `aarch64-apple-darwin`       | ✗              | ✓             |
+| `aarch64-unknown-linux-gnu`  | ✗              | ✓             |
 
 ### Configure
 
