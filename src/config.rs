@@ -1233,14 +1233,17 @@ impl Config {
                         } else if enabled_repos.is_empty() {
                             anyhow::bail!("Not inside a git repository and no enabled repos in ~/.wshm/global.toml. Use --repo owner/repo");
                         } else {
-                            // Multiple repos: print list and instructions
-                            eprintln!("Not inside a git repository. Multiple repos found in ~/.wshm/global.toml:");
-                            eprintln!();
-                            for repo in &enabled_repos {
-                                eprintln!("  {}", repo.slug);
+                            eprintln!(
+                                "Found ~/.wshm/global.toml with {} repos:",
+                                enabled_repos.len()
+                            );
+                            for (i, repo) in enabled_repos.iter().enumerate() {
+                                eprintln!("  {}. {}", i + 1, repo.slug);
                             }
                             eprintln!();
-                            eprintln!("Use --repo <slug> to specify which one.");
+                            eprintln!(
+                                "Use --repo <slug> to select, or run all with: wshm run --all"
+                            );
                             anyhow::bail!("Ambiguous repo selection");
                         }
                     } else {
