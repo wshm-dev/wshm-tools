@@ -40,7 +40,15 @@ impl Tab {
     }
 
     pub fn all() -> &'static [Tab] {
-        &[Tab::Repos, Tab::Action, Tab::Issues, Tab::PullRequests, Tab::Queue, Tab::Stats, Tab::Activity]
+        &[
+            Tab::Repos,
+            Tab::Action,
+            Tab::Issues,
+            Tab::PullRequests,
+            Tab::Queue,
+            Tab::Stats,
+            Tab::Activity,
+        ]
     }
 }
 
@@ -161,6 +169,8 @@ pub struct App {
     pub confirm_delete: bool,
     pub settings_popup: Option<RepoSettings>,
     pub action_detail: Option<ActionDetailPopup>,
+    /// Some("v0.29.0") if a newer release is available, None otherwise.
+    pub update_available: Option<String>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -189,9 +199,9 @@ pub struct SettingItem {
 
 #[derive(Clone, PartialEq)]
 pub enum SettingKind {
-    Toggle,  // true/false
-    Text,    // editable string
-    Label,   // read-only info
+    Toggle, // true/false
+    Text,   // editable string
+    Label,  // read-only info
 }
 
 #[derive(Clone)]
@@ -212,7 +222,11 @@ impl App {
     pub fn new(config: &Config, db: &Database) -> Result<Self> {
         let mut app = Self {
             repo_slug: config.repo_slug(),
-            active_tab: if GlobalConfig::default_path().exists() { Tab::Repos } else { Tab::Issues },
+            active_tab: if GlobalConfig::default_path().exists() {
+                Tab::Repos
+            } else {
+                Tab::Issues
+            },
             scroll_offset: 0,
             sort_field: SortField::Number,
             sort_dir: SortDir::Desc,
@@ -247,11 +261,25 @@ impl App {
             confirm_delete: false,
             settings_popup: None,
             action_detail: None,
+            update_available: None,
         };
         app.load_repos();
         app.load_actions();
         app.refresh(db)?;
         Ok(app)
+    }
+
+    /// Check for a newer release in the background and update `update_available`.
+    pub async fn check_update(&mut self) {
+        if let Ok(status) = crate::update::check_update_status().await {
+            if status.get("status").and_then(|v| v.as_str()) == Some("update-available") {
+                if let Some(latest) = status.get("latest").and_then(|v| v.as_str()) {
+                    self.update_available = Some(format!("v{latest}"));
+                }
+            } else {
+                self.update_available = None;
+            }
+        }
     }
 
     pub fn refresh(&mut self, db: &Database) -> Result<()> {
@@ -274,7 +302,11 @@ impl App {
                     })
                     .map(|pr| pr.number)
                     .collect();
-                IssueRow { issue, triage, linked_prs }
+                IssueRow {
+                    issue,
+                    triage,
+                    linked_prs,
+                }
             })
             .collect();
 
@@ -297,7 +329,9 @@ impl App {
     }
 
     fn build_stats(&mut self) {
-        let triaged: Vec<&TriageResultRow> = self.issues.iter()
+        let triaged: Vec<&TriageResultRow> = self
+            .issues
+            .iter()
             .filter_map(|r| r.triage.as_ref())
             .collect();
 
@@ -327,7 +361,9 @@ impl App {
         }
 
         // Recent triages (last 20, by acted_at descending)
-        let mut recent: Vec<TriageResultRow> = self.issues.iter()
+        let mut recent: Vec<TriageResultRow> = self
+            .issues
+            .iter()
             .filter_map(|r| r.triage.clone())
             .collect();
         recent.sort_by(|a, b| b.acted_at.cmp(&a.acted_at));
@@ -336,23 +372,40 @@ impl App {
 
         // Age analysis
         let now = chrono::Utc::now();
-        let issue_ages: Vec<u64> = self.issues.iter()
+        let issue_ages: Vec<u64> = self
+            .issues
+            .iter()
             .filter_map(|r| {
-                r.issue.created_at.parse::<chrono::DateTime<chrono::Utc>>().ok()
+                r.issue
+                    .created_at
+                    .parse::<chrono::DateTime<chrono::Utc>>()
+                    .ok()
                     .map(|dt| now.signed_duration_since(dt).num_days().max(0) as u64)
             })
             .collect();
-        let pr_ages: Vec<u64> = self.pulls.iter()
+        let pr_ages: Vec<u64> = self
+            .pulls
+            .iter()
             .filter_map(|pr| {
-                pr.created_at.parse::<chrono::DateTime<chrono::Utc>>().ok()
+                pr.created_at
+                    .parse::<chrono::DateTime<chrono::Utc>>()
+                    .ok()
                     .map(|dt| now.signed_duration_since(dt).num_days().max(0) as u64)
             })
             .collect();
 
         self.stats.oldest_issue_days = issue_ages.iter().copied().max().unwrap_or(0);
         self.stats.oldest_pr_days = pr_ages.iter().copied().max().unwrap_or(0);
-        self.stats.avg_issue_age_days = if issue_ages.is_empty() { 0 } else { issue_ages.iter().sum::<u64>() / issue_ages.len() as u64 };
-        self.stats.avg_pr_age_days = if pr_ages.is_empty() { 0 } else { pr_ages.iter().sum::<u64>() / pr_ages.len() as u64 };
+        self.stats.avg_issue_age_days = if issue_ages.is_empty() {
+            0
+        } else {
+            issue_ages.iter().sum::<u64>() / issue_ages.len() as u64
+        };
+        self.stats.avg_pr_age_days = if pr_ages.is_empty() {
+            0
+        } else {
+            pr_ages.iter().sum::<u64>() / pr_ages.len() as u64
+        };
 
         // Age buckets
         let bucket_defs: &[(&str, u64, u64)] = &[
@@ -363,13 +416,14 @@ impl App {
             ("90-180d", 90, 180),
             ("180d+", 180, u64::MAX),
         ];
-        self.stats.age_buckets = bucket_defs.iter().map(|&(label, min, max)| {
-            AgeBucket {
+        self.stats.age_buckets = bucket_defs
+            .iter()
+            .map(|&(label, min, max)| AgeBucket {
                 label,
                 issue_count: issue_ages.iter().filter(|&&d| d >= min && d < max).count(),
                 pr_count: pr_ages.iter().filter(|&&d| d >= min && d < max).count(),
-            }
-        }).collect();
+            })
+            .collect();
     }
 
     pub fn next_tab(&mut self) {
@@ -416,7 +470,11 @@ impl App {
                 self.issues.sort_by(|a, b| {
                     let cmp = match self.sort_field {
                         SortField::Number => a.issue.number.cmp(&b.issue.number),
-                        SortField::Title => a.issue.title.to_lowercase().cmp(&b.issue.title.to_lowercase()),
+                        SortField::Title => a
+                            .issue
+                            .title
+                            .to_lowercase()
+                            .cmp(&b.issue.title.to_lowercase()),
                         SortField::Category => {
                             let ac = a.triage.as_ref().map(|t| t.category.as_str()).unwrap_or("");
                             let bc = b.triage.as_ref().map(|t| t.category.as_str()).unwrap_or("");
@@ -435,8 +493,10 @@ impl App {
                                 Some("low") => 3,
                                 _ => 4,
                             };
-                            let ap = pri_rank(a.triage.as_ref().and_then(|t| t.priority.as_deref()));
-                            let bp = pri_rank(b.triage.as_ref().and_then(|t| t.priority.as_deref()));
+                            let ap =
+                                pri_rank(a.triage.as_ref().and_then(|t| t.priority.as_deref()));
+                            let bp =
+                                pri_rank(b.triage.as_ref().and_then(|t| t.priority.as_deref()));
                             ap.cmp(&bp)
                         }
                         SortField::Age => a.issue.created_at.cmp(&b.issue.created_at),
@@ -447,7 +507,11 @@ impl App {
                         }
                         _ => std::cmp::Ordering::Equal,
                     };
-                    if dir == SortDir::Desc { cmp.reverse() } else { cmp }
+                    if dir == SortDir::Desc {
+                        cmp.reverse()
+                    } else {
+                        cmp
+                    }
                 });
             }
             Tab::PullRequests | Tab::Queue => {
@@ -464,7 +528,11 @@ impl App {
                         SortField::Age => a.created_at.cmp(&b.created_at),
                         _ => std::cmp::Ordering::Equal,
                     };
-                    if dir == SortDir::Desc { cmp.reverse() } else { cmp }
+                    if dir == SortDir::Desc {
+                        cmp.reverse()
+                    } else {
+                        cmp
+                    }
                 });
             }
             _ => {}
@@ -512,7 +580,7 @@ impl App {
                         WHEN 'medium' THEN 2
                         ELSE 3
                     END,
-                    i.created_at ASC"
+                    i.created_at ASC",
             ) {
                 Ok(s) => s,
                 Err(_) => continue,
@@ -536,7 +604,9 @@ impl App {
                 let created_at: String = row.get::<_, String>(2).unwrap_or_default();
                 let body: String = row.get::<_, String>(3).unwrap_or_default();
                 let labels: String = row.get::<_, String>(4).unwrap_or_default();
-                let category: String = row.get::<_, String>(5).unwrap_or_else(|_| "untriaged".into());
+                let category: String = row
+                    .get::<_, String>(5)
+                    .unwrap_or_else(|_| "untriaged".into());
                 let priority: String = row.get::<_, String>(6).unwrap_or_else(|_| "–".into());
                 let is_simple_fix: bool = row.get::<_, bool>(7).unwrap_or(false);
                 let summary: String = row.get::<_, String>(8).unwrap_or_default();
@@ -596,7 +666,9 @@ impl App {
         if let Some(item) = self.actions.get_mut(self.scroll_offset) {
             // Lazy load comments
             if item.comments.is_empty() {
-                let db_path = PathBuf::from(&item.repo_path).join(".wshm").join("state.db");
+                let db_path = PathBuf::from(&item.repo_path)
+                    .join(".wshm")
+                    .join("state.db");
                 if let Ok(conn) = rusqlite::Connection::open(&db_path) {
                     if let Ok(mut stmt) = conn.prepare(
                         "SELECT author, body, created_at FROM comments WHERE issue_number = ?1 ORDER BY created_at ASC"
@@ -659,31 +731,44 @@ impl App {
                 let has_wshm = path_buf.join(".wshm").exists();
 
                 // Try to get counts from the repo's state.db
-                let (open_issues, closed_issues, total_issues, open_prs, triaged_count) = if has_wshm {
-                    let db_path = path_buf.join(".wshm").join("state.db");
-                    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
-                        let open: Option<usize> = conn
-                            .query_row("SELECT COUNT(*) FROM issues WHERE state = 'open'", [], |r| r.get(0))
-                            .ok();
-                        let closed: Option<usize> = conn
-                            .query_row("SELECT COUNT(*) FROM issues WHERE state = 'closed'", [], |r| r.get(0))
-                            .ok();
-                        let total: Option<usize> = conn
-                            .query_row("SELECT COUNT(*) FROM issues", [], |r| r.get(0))
-                            .ok();
-                        let prs: Option<usize> = conn
-                            .query_row("SELECT COUNT(*) FROM pull_requests WHERE state = 'open'", [], |r| r.get(0))
-                            .ok();
-                        let triaged: Option<usize> = conn
-                            .query_row("SELECT COUNT(*) FROM triage_results", [], |r| r.get(0))
-                            .ok();
-                        (open, closed, total, prs, triaged)
+                let (open_issues, closed_issues, total_issues, open_prs, triaged_count) =
+                    if has_wshm {
+                        let db_path = path_buf.join(".wshm").join("state.db");
+                        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                            let open: Option<usize> = conn
+                                .query_row(
+                                    "SELECT COUNT(*) FROM issues WHERE state = 'open'",
+                                    [],
+                                    |r| r.get(0),
+                                )
+                                .ok();
+                            let closed: Option<usize> = conn
+                                .query_row(
+                                    "SELECT COUNT(*) FROM issues WHERE state = 'closed'",
+                                    [],
+                                    |r| r.get(0),
+                                )
+                                .ok();
+                            let total: Option<usize> = conn
+                                .query_row("SELECT COUNT(*) FROM issues", [], |r| r.get(0))
+                                .ok();
+                            let prs: Option<usize> = conn
+                                .query_row(
+                                    "SELECT COUNT(*) FROM pull_requests WHERE state = 'open'",
+                                    [],
+                                    |r| r.get(0),
+                                )
+                                .ok();
+                            let triaged: Option<usize> = conn
+                                .query_row("SELECT COUNT(*) FROM triage_results", [], |r| r.get(0))
+                                .ok();
+                            (open, closed, total, prs, triaged)
+                        } else {
+                            (None, None, None, None, None)
+                        }
                     } else {
                         (None, None, None, None, None)
-                    }
-                } else {
-                    (None, None, None, None, None)
-                };
+                    };
 
                 RepoRow {
                     slug: r.slug.clone(),
@@ -792,36 +877,119 @@ impl App {
         if let Some(repo) = self.repos.get(self.scroll_offset) {
             let config_path = PathBuf::from(&repo.path).join(".wshm").join("config.toml");
             let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-            let toml_val: toml::Value = toml::from_str(&content).unwrap_or(toml::Value::Table(toml::Table::new()));
+            let toml_val: toml::Value =
+                toml::from_str(&content).unwrap_or(toml::Value::Table(toml::Table::new()));
 
             let mut items = Vec::new();
 
             // AI section
             if let Some(ai) = toml_val.get("ai").and_then(|v| v.as_table()) {
-                items.push(SettingItem { section: "ai".into(), key: "provider".into(), value: ai.get("provider").and_then(|v| v.as_str()).unwrap_or("anthropic").into(), kind: SettingKind::Text });
-                items.push(SettingItem { section: "ai".into(), key: "model".into(), value: ai.get("model").and_then(|v| v.as_str()).unwrap_or("claude-sonnet-4-6").into(), kind: SettingKind::Text });
+                items.push(SettingItem {
+                    section: "ai".into(),
+                    key: "provider".into(),
+                    value: ai
+                        .get("provider")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("anthropic")
+                        .into(),
+                    kind: SettingKind::Text,
+                });
+                items.push(SettingItem {
+                    section: "ai".into(),
+                    key: "model".into(),
+                    value: ai
+                        .get("model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("claude-sonnet-4-6")
+                        .into(),
+                    kind: SettingKind::Text,
+                });
             } else {
-                items.push(SettingItem { section: "ai".into(), key: "provider".into(), value: "anthropic".into(), kind: SettingKind::Text });
-                items.push(SettingItem { section: "ai".into(), key: "model".into(), value: "claude-sonnet-4-6".into(), kind: SettingKind::Text });
+                items.push(SettingItem {
+                    section: "ai".into(),
+                    key: "provider".into(),
+                    value: "anthropic".into(),
+                    kind: SettingKind::Text,
+                });
+                items.push(SettingItem {
+                    section: "ai".into(),
+                    key: "model".into(),
+                    value: "claude-sonnet-4-6".into(),
+                    kind: SettingKind::Text,
+                });
             }
 
             // Triage
             let triage = toml_val.get("triage").and_then(|v| v.as_table());
-            items.push(SettingItem { section: "triage".into(), key: "enabled".into(), value: triage.and_then(|t| t.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(true).to_string(), kind: SettingKind::Toggle });
-            items.push(SettingItem { section: "triage".into(), key: "auto_fix".into(), value: triage.and_then(|t| t.get("auto_fix")).and_then(|v| v.as_bool()).unwrap_or(false).to_string(), kind: SettingKind::Toggle });
+            items.push(SettingItem {
+                section: "triage".into(),
+                key: "enabled".into(),
+                value: triage
+                    .and_then(|t| t.get("enabled"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true)
+                    .to_string(),
+                kind: SettingKind::Toggle,
+            });
+            items.push(SettingItem {
+                section: "triage".into(),
+                key: "auto_fix".into(),
+                value: triage
+                    .and_then(|t| t.get("auto_fix"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    .to_string(),
+                kind: SettingKind::Toggle,
+            });
 
             // PR
             let pr = toml_val.get("pr").and_then(|v| v.as_table());
-            items.push(SettingItem { section: "pr".into(), key: "enabled".into(), value: pr.and_then(|t| t.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false).to_string(), kind: SettingKind::Toggle });
-            items.push(SettingItem { section: "pr".into(), key: "auto_label".into(), value: pr.and_then(|t| t.get("auto_label")).and_then(|v| v.as_bool()).unwrap_or(true).to_string(), kind: SettingKind::Toggle });
+            items.push(SettingItem {
+                section: "pr".into(),
+                key: "enabled".into(),
+                value: pr
+                    .and_then(|t| t.get("enabled"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    .to_string(),
+                kind: SettingKind::Toggle,
+            });
+            items.push(SettingItem {
+                section: "pr".into(),
+                key: "auto_label".into(),
+                value: pr
+                    .and_then(|t| t.get("auto_label"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true)
+                    .to_string(),
+                kind: SettingKind::Toggle,
+            });
 
             // Queue
             let queue = toml_val.get("queue").and_then(|v| v.as_table());
-            items.push(SettingItem { section: "queue".into(), key: "enabled".into(), value: queue.and_then(|t| t.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false).to_string(), kind: SettingKind::Toggle });
+            items.push(SettingItem {
+                section: "queue".into(),
+                key: "enabled".into(),
+                value: queue
+                    .and_then(|t| t.get("enabled"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    .to_string(),
+                kind: SettingKind::Toggle,
+            });
 
             // Conflicts
             let conflicts = toml_val.get("conflicts").and_then(|v| v.as_table());
-            items.push(SettingItem { section: "conflicts".into(), key: "enabled".into(), value: conflicts.and_then(|t| t.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false).to_string(), kind: SettingKind::Toggle });
+            items.push(SettingItem {
+                section: "conflicts".into(),
+                key: "enabled".into(),
+                value: conflicts
+                    .and_then(|t| t.get("enabled"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    .to_string(),
+                kind: SettingKind::Toggle,
+            });
 
             self.settings_popup = Some(RepoSettings {
                 slug: repo.slug.clone(),
@@ -834,13 +1002,17 @@ impl App {
 
     pub fn settings_up(&mut self) {
         if let Some(ref mut s) = self.settings_popup {
-            if s.selected > 0 { s.selected -= 1; }
+            if s.selected > 0 {
+                s.selected -= 1;
+            }
         }
     }
 
     pub fn settings_down(&mut self) {
         if let Some(ref mut s) = self.settings_popup {
-            if s.selected < s.items.len().saturating_sub(1) { s.selected += 1; }
+            if s.selected < s.items.len().saturating_sub(1) {
+                s.selected += 1;
+            }
         }
     }
 
@@ -848,7 +1020,11 @@ impl App {
         if let Some(ref mut settings) = self.settings_popup {
             if let Some(item) = settings.items.get_mut(settings.selected) {
                 if item.kind == SettingKind::Toggle {
-                    item.value = if item.value == "true" { "false".into() } else { "true".into() };
+                    item.value = if item.value == "true" {
+                        "false".into()
+                    } else {
+                        "true".into()
+                    };
                 }
             }
         }
@@ -867,9 +1043,12 @@ impl App {
 
     pub fn save_settings(&mut self) {
         if let Some(ref settings) = self.settings_popup {
-            let config_path = PathBuf::from(&settings.path).join(".wshm").join("config.toml");
+            let config_path = PathBuf::from(&settings.path)
+                .join(".wshm")
+                .join("config.toml");
             let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-            let mut toml_val: toml::Value = toml::from_str(&content).unwrap_or(toml::Value::Table(toml::Table::new()));
+            let mut toml_val: toml::Value =
+                toml::from_str(&content).unwrap_or(toml::Value::Table(toml::Table::new()));
 
             for item in &settings.items {
                 let table = toml_val
@@ -888,7 +1067,10 @@ impl App {
                 table.insert(item.key.clone(), val);
             }
 
-            let _ = std::fs::write(&config_path, toml::to_string_pretty(&toml_val).unwrap_or_default());
+            let _ = std::fs::write(
+                &config_path,
+                toml::to_string_pretty(&toml_val).unwrap_or_default(),
+            );
         }
         self.settings_popup = None;
     }
@@ -918,7 +1100,14 @@ impl App {
     pub fn refresh_logs(&mut self) {
         // Try journalctl first
         if let Ok(output) = std::process::Command::new("journalctl")
-            .args(["-u", "wshm", "--no-pager", "-n", "100", "--output=short-iso"])
+            .args([
+                "-u",
+                "wshm",
+                "--no-pager",
+                "-n",
+                "100",
+                "--output=short-iso",
+            ])
             .output()
         {
             if output.status.success() {

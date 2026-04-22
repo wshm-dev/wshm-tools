@@ -1,4 +1,5 @@
 pub mod autogen;
+pub mod backup;
 pub mod context;
 pub mod improve;
 pub mod migrate;
@@ -9,7 +10,11 @@ pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
-        let end = s.char_indices().nth(max - 1).map(|(i, _)| i).unwrap_or(s.len());
+        let end = s
+            .char_indices()
+            .nth(max - 1)
+            .map(|(i, _)| i)
+            .unwrap_or(s.len());
         format!("{}…", &s[..end])
     }
 }
@@ -46,9 +51,9 @@ pub fn extract_linked_issues_with_type(body: &str) -> Vec<(String, u64)> {
 }
 pub mod changelog;
 pub mod conflict_resolution;
-pub mod notify;
 pub mod dashboard;
 pub mod merge_queue;
+pub mod notify;
 pub mod pr_analysis;
 pub mod pr_health;
 pub mod report;

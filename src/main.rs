@@ -23,7 +23,8 @@ mod vault;
 
 use cli::{Cli, Command};
 
-const PRO_MSG: &str = "This feature requires wshm Pro. Visit https://wshm.dev/pro or run: wshm login --license";
+const PRO_MSG: &str =
+    "This feature requires wshm Pro. Visit https://wshm.dev/pro or run: wshm login --license";
 
 /// Gate a pro feature. Returns Ok(()) if pro, Err with message if not.
 fn require_pro(feature: &str) -> Result<()> {
@@ -31,7 +32,10 @@ fn require_pro(feature: &str) -> Result<()> {
         return Ok(());
     }
     if pro_hooks::is_pro() {
-        anyhow::bail!("Your wshm Pro license does not include the '{}' feature.", feature);
+        anyhow::bail!(
+            "Your wshm Pro license does not include the '{}' feature.",
+            feature
+        );
     }
     anyhow::bail!("{}\n   Feature: {}", PRO_MSG, feature);
 }
@@ -114,7 +118,15 @@ async fn main() -> Result<()> {
                 github::sync::incremental_sync(&gh, &db, "issues").await?;
             }
 
-            pipelines::triage::run(&config, &db, &gh, args, triage_format(&cli), exporter.as_ref()).await?;
+            pipelines::triage::run(
+                &config,
+                &db,
+                &gh,
+                args,
+                triage_format(&cli),
+                exporter.as_ref(),
+            )
+            .await?;
         }
         Some(Command::Pr(args)) => {
             let (config, db, gh, exporter) = init_full(&cli)?;
@@ -167,8 +179,15 @@ async fn main() -> Result<()> {
                 apply: args.apply,
                 retriage: false,
             };
-            pipelines::triage::run(&config, &db, &gh, &triage_args, triage_format(&cli), exporter.as_ref())
-                .await?;
+            pipelines::triage::run(
+                &config,
+                &db,
+                &gh,
+                &triage_args,
+                triage_format(&cli),
+                exporter.as_ref(),
+            )
+            .await?;
 
             let pr_args = cli::PrArgs {
                 pr: None,
@@ -376,6 +395,12 @@ async fn main() -> Result<()> {
         Some(Command::Migrate(args)) => {
             pipelines::migrate::run(args, &cli).await?;
         }
+        Some(Command::Backup(args)) => {
+            pipelines::backup::run_backup(args.output.as_deref())?;
+        }
+        Some(Command::Restore(args)) => {
+            pipelines::backup::run_restore(&args.from)?;
+        }
         Some(Command::Tui) => {
             // Try single-repo mode first, fallback to global mode
             match config::Config::load(&cli) {
@@ -390,7 +415,10 @@ async fn main() -> Result<()> {
                         anyhow::bail!("Not in a git repo and no ~/.wshm/global.toml found. Use --repo or create global.toml.");
                     }
                     let global = config::GlobalConfig::load(&global_path)?;
-                    let first = global.repos.iter().find(|r| r.enabled)
+                    let first = global
+                        .repos
+                        .iter()
+                        .find(|r| r.enabled)
                         .ok_or_else(|| anyhow::anyhow!("No enabled repos in global.toml"))?;
                     let config = config::Config::load_for_repo(&first.path, &first.slug)?;
                     let db = db::Database::open(&config)?;

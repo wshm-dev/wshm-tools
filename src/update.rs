@@ -131,7 +131,12 @@ async fn download_asset(
 }
 
 /// Download checksums file from a release (via API for private repo support).
-async fn fetch_checksums(http: &reqwest::Client, tag: &str, token: Option<&str>, assets: &[(String, String)]) -> Result<String> {
+async fn fetch_checksums(
+    http: &reqwest::Client,
+    tag: &str,
+    token: Option<&str>,
+    assets: &[(String, String)],
+) -> Result<String> {
     // Look for checksums file in assets
     let checksums_name = format!("checksums-{tag}.sha256");
     let asset_url = assets
@@ -382,6 +387,30 @@ pub async fn check_and_update(apply: bool, json: bool) -> Result<Option<String>>
     }
 
     Ok(Some(tag))
+}
+
+/// Check update status without side effects.
+/// Returns a JSON value with `{ status, current, latest }`.
+pub async fn check_update_status() -> anyhow::Result<serde_json::Value> {
+    let http = reqwest::Client::new();
+    let token = std::env::var("GITHUB_TOKEN").ok();
+    let token_ref = token.as_deref();
+
+    let (tag, _url) = fetch_latest_release(&http, token_ref).await?;
+    let latest = tag.strip_prefix('v').unwrap_or(&tag).to_string();
+    let current = current_version().to_string();
+
+    let status = if is_newer(&tag, &current) {
+        "update-available"
+    } else {
+        "up-to-date"
+    };
+
+    Ok(serde_json::json!({
+        "status": status,
+        "current": current,
+        "latest": latest,
+    }))
 }
 
 /// Silent background check, used by the daemon scheduler.

@@ -88,11 +88,7 @@ async fn auth_middleware(
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Basic "))
-        .and_then(|b64| {
-            base64::engine::general_purpose::STANDARD
-                .decode(b64)
-                .ok()
-        })
+        .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok())
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .map(|decoded| {
             if let Some((user, pass)) = decoded.split_once(':') {
@@ -243,7 +239,8 @@ async fn api_issues(
         if let Ok(issues) = ds.db.get_open_issues() {
             // Build a map: issue_number -> list of linked PRs (from open PRs bodies)
             let open_prs = ds.db.get_open_pulls().unwrap_or_default();
-            let mut issue_prs: std::collections::HashMap<u64, Vec<serde_json::Value>> = std::collections::HashMap::new();
+            let mut issue_prs: std::collections::HashMap<u64, Vec<serde_json::Value>> =
+                std::collections::HashMap::new();
             for pr in &open_prs {
                 let body = pr.body.as_deref().unwrap_or("");
                 let linked = crate::pipelines::extract_linked_issue_numbers(body);
@@ -266,12 +263,19 @@ async fn api_issues(
                     None => "no_pr",
                     Some(prs) => {
                         let has_ready = prs.iter().any(|p| {
-                            let ci_ok = p["ci_status"].as_str().map(|s| s == "success").unwrap_or(false);
+                            let ci_ok = p["ci_status"]
+                                .as_str()
+                                .map(|s| s == "success")
+                                .unwrap_or(false);
                             let mergeable = p["mergeable"].as_bool().unwrap_or(true);
                             let not_draft = !p["draft"].as_bool().unwrap_or(false);
                             ci_ok && mergeable && not_draft
                         });
-                        if has_ready { "pr_ready" } else { "has_pr" }
+                        if has_ready {
+                            "pr_ready"
+                        } else {
+                            "has_pr"
+                        }
                     }
                 };
                 all_issues.push(json!({
@@ -542,7 +546,11 @@ async fn serve_asset(path: &str) -> Response {
 async fn serve_index() -> Response {
     match WebAssets::get("index.html") {
         Some(file) => Html(String::from_utf8_lossy(&file.data).to_string()).into_response(),
-        None => (StatusCode::NOT_FOUND, "index.html not found in embedded assets").into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            "index.html not found in embedded assets",
+        )
+            .into_response(),
     }
 }
 
@@ -562,20 +570,76 @@ async fn handle_spa_fallback(req: Request<Body>) -> Response {
     serve_asset(path).await
 }
 
+/// GET /api/v1/update -- check for a newer release (dry-run, no side effects).
+async fn api_update_check() -> impl IntoResponse {
+    match crate::update::check_update_status().await {
+        Ok(status) => Json(status).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("{e:#}") })),
+        )
+            .into_response(),
+    }
+}
+
+/// POST /api/v1/update/apply -- trigger a self-update in the background.
+async fn api_update_apply() -> impl IntoResponse {
+    tokio::spawn(async {
+        let _ = crate::update::check_and_update(true, false).await;
+    });
+    Json(json!({ "status": "update triggered" }))
+}
+
 /// GET /api/v1/license -- license status and feature gates.
 async fn api_license() -> impl IntoResponse {
     let is_pro = crate::pro_hooks::is_pro();
 
     let pro_features = vec![
-        ("review", "Inline code review", is_pro && crate::pro_hooks::has_feature("review")),
-        ("auto-fix", "Auto-generate fix PRs", is_pro && crate::pro_hooks::has_feature("auto-fix")),
-        ("improve", "Propose improvements", is_pro && crate::pro_hooks::has_feature("improve")),
-        ("conflicts", "Conflict resolution", is_pro && crate::pro_hooks::has_feature("conflicts")),
-        ("dashboard", "HTML dashboard export", is_pro && crate::pro_hooks::has_feature("dashboard")),
-        ("changelog", "Changelog generation", is_pro && crate::pro_hooks::has_feature("changelog")),
-        ("reports", "HTML/PDF reports", is_pro && crate::pro_hooks::has_feature("reports")),
-        ("revert", "Revert wshm actions", is_pro && crate::pro_hooks::has_feature("revert")),
-        ("daemon-webhook", "Daemon webhook mode", is_pro && crate::pro_hooks::has_feature("daemon")),
+        (
+            "review",
+            "Inline code review",
+            is_pro && crate::pro_hooks::has_feature("review"),
+        ),
+        (
+            "auto-fix",
+            "Auto-generate fix PRs",
+            is_pro && crate::pro_hooks::has_feature("auto-fix"),
+        ),
+        (
+            "improve",
+            "Propose improvements",
+            is_pro && crate::pro_hooks::has_feature("improve"),
+        ),
+        (
+            "conflicts",
+            "Conflict resolution",
+            is_pro && crate::pro_hooks::has_feature("conflicts"),
+        ),
+        (
+            "dashboard",
+            "HTML dashboard export",
+            is_pro && crate::pro_hooks::has_feature("dashboard"),
+        ),
+        (
+            "changelog",
+            "Changelog generation",
+            is_pro && crate::pro_hooks::has_feature("changelog"),
+        ),
+        (
+            "reports",
+            "HTML/PDF reports",
+            is_pro && crate::pro_hooks::has_feature("reports"),
+        ),
+        (
+            "revert",
+            "Revert wshm actions",
+            is_pro && crate::pro_hooks::has_feature("revert"),
+        ),
+        (
+            "daemon-webhook",
+            "Daemon webhook mode",
+            is_pro && crate::pro_hooks::has_feature("daemon"),
+        ),
     ];
 
     let features: Vec<serde_json::Value> = pro_features
@@ -595,12 +659,16 @@ async fn api_license() -> impl IntoResponse {
 }
 
 /// POST /api/v1/license -- activate a license key from the web UI.
-async fn api_license_activate(
-    Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
+async fn api_license_activate(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
     let key = match body.get("license_key").and_then(|v| v.as_str()) {
         Some(k) if !k.trim().is_empty() => k.trim().to_string(),
-        _ => return (StatusCode::BAD_REQUEST, Json(json!({"error": "license_key is required"}))).into_response(),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "license_key is required"})),
+            )
+                .into_response()
+        }
     };
 
     // Try to activate via the license module
@@ -609,11 +677,16 @@ async fn api_license_activate(
             "status": "ok",
             "plan": plan,
             "message": "License activated successfully",
-        })).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({
-            "status": "error",
-            "message": format!("{e}"),
-        }))).into_response(),
+        }))
+        .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "status": "error",
+                "message": format!("{e}"),
+            })),
+        )
+            .into_response(),
     }
 }
 
@@ -646,7 +719,9 @@ fn activate_license(key: &str) -> Result<String, String> {
         )
         .map_err(|e| format!("Cannot reach license server: {e}"))?;
 
-    let body: serde_json::Value = resp.into_json().map_err(|e| format!("Invalid response: {e}"))?;
+    let body: serde_json::Value = resp
+        .into_json()
+        .map_err(|e| format!("Invalid response: {e}"))?;
 
     if let Some(token) = body["token"].as_str() {
         // Cache JWT
@@ -670,7 +745,10 @@ fn activate_license(key: &str) -> Result<String, String> {
             .to_string();
         Ok(plan)
     } else {
-        Err(body["error"].as_str().unwrap_or("Activation failed").to_string())
+        Err(body["error"]
+            .as_str()
+            .unwrap_or("Activation failed")
+            .to_string())
     }
 }
 
@@ -694,6 +772,8 @@ pub fn web_routes(multi: Arc<MultiDaemonState>) -> Router {
         .route("/api/v1/triage", get(api_triage))
         .route("/api/v1/queue", get(api_queue))
         .route("/api/v1/activity", get(api_activity))
+        .route("/api/v1/update", get(api_update_check))
+        .route("/api/v1/update/apply", post(api_update_apply))
         .route("/api/v1/license", get(api_license))
         .route("/api/v1/license/activate", post(api_license_activate))
         .route("/api/v1/reviews", get(api_reviews))

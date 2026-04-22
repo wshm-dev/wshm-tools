@@ -99,6 +99,25 @@ pub enum Command {
 
     /// Migrate data from SQLite to PostgreSQL
     Migrate(MigrateArgs),
+
+    /// Backup the database and config
+    Backup(BackupArgs),
+
+    /// Restore from a backup file
+    Restore(RestoreArgs),
+}
+
+#[derive(Debug, clap::Args)]
+pub struct BackupArgs {
+    /// Output path (default: ~/.wshm/backups/state-<timestamp>.db)
+    #[arg(short, long)]
+    pub output: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct RestoreArgs {
+    /// Backup file to restore from
+    pub from: std::path::PathBuf,
 }
 
 #[derive(clap::Args)]
