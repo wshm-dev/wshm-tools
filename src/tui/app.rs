@@ -333,7 +333,9 @@ impl App {
             *cat_map.entry(t.category.clone()).or_default() += 1;
         }
         self.stats.by_category = cat_map.into_iter().collect();
-        self.stats.by_category.sort_by_key(|b| std::cmp::Reverse(b.1));
+        self.stats
+            .by_category
+            .sort_by_key(|b| std::cmp::Reverse(b.1));
 
         // Priority breakdown
         let mut pri_map: HashMap<String, usize> = HashMap::new();
@@ -342,7 +344,9 @@ impl App {
             *pri_map.entry(pri).or_default() += 1;
         }
         self.stats.by_priority = pri_map.into_iter().collect();
-        self.stats.by_priority.sort_by_key(|b| std::cmp::Reverse(b.1));
+        self.stats
+            .by_priority
+            .sort_by_key(|b| std::cmp::Reverse(b.1));
 
         // Average confidence
         if !triaged.is_empty() {
