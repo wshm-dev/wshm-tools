@@ -843,10 +843,7 @@ fn draw_repos(f: &mut Frame, app: &App, area: Rect) {
             InputMode::AddRepoPath => ("Local path: ", "Enter to confirm, Esc to cancel"),
             InputMode::DeleteConfirm => ("Delete? (y/N): ", ""),
             InputMode::EditSetting => ("New value: ", "Enter to confirm, Esc to cancel"),
-            InputMode::RestorePath => (
-                "Backup file path: ",
-                "Enter to restore, Esc to cancel",
-            ),
+            InputMode::RestorePath => ("Backup file path: ", "Enter to restore, Esc to cancel"),
         };
         let input = Paragraph::new(Line::from(vec![
             Span::styled(prompt, Style::default().fg(Color::Yellow)),

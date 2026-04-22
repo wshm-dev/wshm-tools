@@ -833,7 +833,10 @@ impl App {
             Some(InputMode::RestorePath) => {
                 if !self.input_buffer.is_empty() {
                     let file = self.input_buffer.clone();
-                    let args = crate::cli::RestoreArgs { file: file.clone(), force: true };
+                    let args = crate::cli::RestoreArgs {
+                        file: file.clone(),
+                        force: true,
+                    };
                     match crate::pipelines::backup::restore(&args) {
                         Ok(()) => {
                             self.status_message = Some(format!("Restored from: {file}"));
@@ -856,7 +859,10 @@ impl App {
     }
 
     pub fn run_backup(&mut self) {
-        let args = crate::cli::BackupArgs { output: None, include_logs: false };
+        let args = crate::cli::BackupArgs {
+            output: None,
+            include_logs: false,
+        };
         match crate::pipelines::backup::backup(&args) {
             Ok(()) => {
                 self.status_message = Some("Backup saved to .wshm/".to_string());
