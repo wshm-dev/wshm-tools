@@ -846,7 +846,7 @@ impl App {
                 self.input_mode = None;
                 self.input_buffer.clear();
             }
-            None => {}
+            _ => {}
         }
     }
 
