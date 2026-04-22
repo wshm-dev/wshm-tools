@@ -261,7 +261,7 @@ pub async fn run_oss(cli: Cli) -> Result<()> {
             let global_path = args
                 .config
                 .clone()
-                .unwrap_or_else(|| crate::config::GlobalConfig::default_path());
+                .unwrap_or_else(crate::config::GlobalConfig::default_path);
 
             if global_path.exists() {
                 let global = crate::config::GlobalConfig::load(&global_path)?;

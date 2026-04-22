@@ -279,7 +279,7 @@ pub async fn execute(
                     (pr.number, pr.title.clone(), score)
                 })
                 .collect();
-            scored.sort_by(|a, b| b.2.cmp(&a.2));
+            scored.sort_by_key(|b| std::cmp::Reverse(b.2));
 
             let position = scored.iter().position(|(n, _, _)| *n == number);
             match position {
