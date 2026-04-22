@@ -75,6 +75,13 @@ jobs:
             --ignore RUSTSEC-2026-0098 \
             --ignore RUSTSEC-2026-0099
 
+      - name: Check for unsafe code
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2026-0104 \
+            --ignore RUSTSEC-2026-0098 \
+            --ignore RUSTSEC-2026-0099
+
       - name: Scan for command injection risks
         run: |
           echo "## Command injection scan" >> $GITHUB_STEP_SUMMARY
