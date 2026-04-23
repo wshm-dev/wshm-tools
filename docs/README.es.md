@@ -21,6 +21,16 @@
 
 wshm es una herramienta CLI + GitHub Action que actua como agente autonomo de mantenimiento de repositorios.
 
+## Como funciona
+
+Un solo binario. Tus claves API. Tus datos. Cero infraestructura.
+
+```
+GitHub API → Sincronizacion incremental → SQLite local → IA → Acciones (etiqueta, comentario, PR, merge)
+```
+
+Tres modos: CLI, GitHub Action o daemon persistente con webhooks/polling.
+
 ## Caracteristicas
 
 - **Triaje automatico** — Clasificacion, etiquetado y priorizacion de issues por IA
@@ -34,8 +44,17 @@ wshm es una herramienta CLI + GitHub Action que actua como agente autonomo de ma
 - **Retriage periodico** — Re-evaluacion de triajes obsoletos
 - **Notificaciones** — Roadmap diario a Discord, Slack, Teams o webhook: top 10 issues y PRs pendientes, ordenados por prioridad y antiguedad
 - **Dashboard y reportes** — Dashboard HTML y reportes markdown/PDF
+- **Totalmente personalizable** — Plantillas para cada comentario y branding
 
 Un solo binario. Tus claves API. Tus datos. Cero infraestructura.
+
+## Seguridad
+
+- **Dry-run por defecto** — `--apply` necesario para ejecutar acciones
+- **Umbral de confianza** — nunca actua de forma autonoma por debajo de 0.85
+- **Sin force-push** — resolucion de conflictos mediante nuevos commits
+- **Idempotente** — re-ejecutar = mismo resultado
+- **Tokens seguros** — siempre desde variables de entorno
 
 ## Acceso anticipado
 
