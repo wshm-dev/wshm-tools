@@ -194,3 +194,45 @@ jobs:
               -f message="chore: update wshm formula to ${VERSION}" \
               -f content="$CONTENT"
           fi
+
+  docker:
+    name: Build and push Docker image
+    needs: [build-linux-x86, build-linux-arm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          TAG="${{ github.ref_name || github.event.inputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            innovtech/wshm:${{ steps.version.outputs.version }}
+            innovtech/wshm:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/wshm-dev/wshm
+            org.opencontainers.image.description=wshm — AI-powered GitHub agent
+            org.opencontainers.image.licenses=SSPL-1.0
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}

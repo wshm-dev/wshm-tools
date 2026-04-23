@@ -127,7 +127,7 @@ One static binary. No SaaS dependency. Runs where your code lives.
 | Platform       | How                                                              |
 |----------------|------------------------------------------------------------------|
 | **VM / VPS**   | systemd service, auto-update via Homebrew, any Linux             |
-| **Docker**     | `docker run ghcr.io/wshm-dev/wshm:latest` — multi-arch (amd64 + arm64), ships with v0.28.0 |
+| **Docker**     | `docker run innovtech/wshm:latest` — multi-arch (amd64 + arm64)                            |
 | **Local dev**  | `wshm tui` / `wshm triage` — works offline with Ollama           |
 
 Kubernetes manifests and a GitHub Action are planned — follow [#22](https://github.com/wshm-dev/wshm/issues/22).
