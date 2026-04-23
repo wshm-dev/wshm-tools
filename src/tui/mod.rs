@@ -174,7 +174,7 @@ fn run_loop(
                         // 'U' — apply update (spawned so the TUI isn't blocked)
                         KeyCode::Char('U') => {
                             tokio::spawn(async {
-                                let _ = crate::update::check_and_update(true, false).await;
+                                let _ = crate::pro_hooks::run_update(true, false).await;
                             });
                         }
                         // 'b' — backup state.db to default path

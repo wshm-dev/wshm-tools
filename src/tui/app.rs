@@ -874,7 +874,7 @@ impl App {
     }
 
     pub async fn check_update(&mut self) {
-        if let Ok(Some(ver)) = crate::update::check_and_update(false, false).await {
+        if let Ok(Some(ver)) = crate::pro_hooks::run_update(false, false).await {
             self.update_available = Some(ver);
         } else {
             self.update_available = None;
