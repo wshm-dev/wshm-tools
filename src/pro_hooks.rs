@@ -172,7 +172,9 @@ pub fn set_auto_update_hook(f: AutoUpdateFn) {
 pub async fn run_update(apply: bool, json: bool) -> anyhow::Result<Option<String>> {
     match UPDATE_HOOK.get() {
         Some(f) => f(apply, json).await,
-        None => crate::update::check_and_update(&crate::update::UpdateConfig::oss(), apply, json).await,
+        None => {
+            crate::update::check_and_update(&crate::update::UpdateConfig::oss(), apply, json).await
+        }
     }
 }
 

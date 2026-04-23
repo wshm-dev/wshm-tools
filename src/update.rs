@@ -324,9 +324,10 @@ fn is_newer(cfg: &UpdateConfig, remote_tag: &str, local: &str) -> bool {
 }
 
 fn integrity_path(binary_name: &str) -> Option<PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join(format!(".{binary_name}-binary.sha256"))))
+    std::env::current_exe().ok().and_then(|p| {
+        p.parent()
+            .map(|d| d.join(format!(".{binary_name}-binary.sha256")))
+    })
 }
 
 fn store_binary_hash(binary_name: &str, binary_path: &std::path::Path) -> Result<()> {
@@ -350,8 +351,7 @@ pub async fn check_and_update(
     let token = std::env::var("GITHUB_TOKEN").ok();
     let token_ref = token.as_deref();
 
-    let (tag, url) =
-        fetch_latest_release(&http, cfg.repo, cfg.binary_name, token_ref).await?;
+    let (tag, url) = fetch_latest_release(&http, cfg.repo, cfg.binary_name, token_ref).await?;
     let remote_version = tag.strip_prefix('v').unwrap_or(&tag);
     let local_version = current_version();
 
@@ -397,15 +397,12 @@ pub async fn check_and_update(
     }
 
     let target = asset_target()?;
-    let assets =
-        fetch_release_assets(&http, cfg.repo, cfg.binary_name, &tag, token_ref).await?;
-    let checksums =
-        fetch_checksums(&http, cfg.binary_name, &tag, token_ref, &assets).await?;
+    let assets = fetch_release_assets(&http, cfg.repo, cfg.binary_name, &tag, token_ref).await?;
+    let checksums = fetch_checksums(&http, cfg.binary_name, &tag, token_ref, &assets).await?;
     let expected_hash = parse_checksum(&checksums, target)?;
     info!("Expected SHA256: {expected_hash}");
 
-    let archive_data =
-        download_binary(&http, cfg.binary_name, target, token_ref, &assets).await?;
+    let archive_data = download_binary(&http, cfg.binary_name, target, token_ref, &assets).await?;
 
     let actual_hash = sha256_hex(&archive_data);
     if actual_hash != expected_hash {
@@ -455,8 +452,7 @@ pub async fn check_update_status(cfg: &UpdateConfig) -> Result<serde_json::Value
     let token = std::env::var("GITHUB_TOKEN").ok();
     let token_ref = token.as_deref();
 
-    let (tag, url) =
-        fetch_latest_release(&http, cfg.repo, cfg.binary_name, token_ref).await?;
+    let (tag, url) = fetch_latest_release(&http, cfg.repo, cfg.binary_name, token_ref).await?;
     let remote_version = tag.strip_prefix('v').unwrap_or(&tag);
     let local_version = current_version();
 
@@ -479,8 +475,7 @@ pub async fn check_update_status(cfg: &UpdateConfig) -> Result<serde_json::Value
 /// Verify the running binary hasn't been modified since last update.
 /// Returns `Ok(true)` if valid, `Ok(false)` if tampered, `Err` if no hash stored.
 pub fn verify_binary_integrity(cfg: &UpdateConfig) -> Result<bool> {
-    let integrity =
-        integrity_path(cfg.binary_name).context("Cannot determine binary path")?;
+    let integrity = integrity_path(cfg.binary_name).context("Cannot determine binary path")?;
     if !integrity.exists() {
         return Err(anyhow::anyhow!(
             "No integrity hash stored (first run or manual install)"
