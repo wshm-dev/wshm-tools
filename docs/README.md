@@ -13,5 +13,6 @@
 | [Pro Features](pro-features.md) | Code review, auto-fix, conflicts, changelog, reports |
 | [SSO & RBAC](sso-rbac.md) | SAML, OIDC, organizations, roles, permissions |
 | [Daemon & Web UI](daemon.md) | Webhook server, polling, embedded dashboard |
+| [Deployment](deployment.md) | Docker image, Helm/Kustomize, compose, Ansible, cloud-init |
 | [CLI Reference](cli-reference.md) | All commands and flags |
 | [Troubleshooting](troubleshooting.md) | Common issues and solutions |
