@@ -54,4 +54,4 @@ When both happen, the `deploy/` tree gets extracted into a dedicated public repo
 
 ## Pro vs. OSS
 
-`wshm` (OSS) is primarily a CLI; the Kubernetes use case is mostly cron-style runs (`Job` / `CronJob`). The persistent daemon with web UI is in `wshm-pro`, so the Helm chart with a `Deployment` + `Service` + `Ingress` lives in the Pro repo. The OSS chart will focus on `Job`/`CronJob` patterns suitable for periodic triage.
+`wshm` (OSS) ships the CLI, TUI, daemon, and embedded web dashboard. Use `Job`/`CronJob` for periodic triage runs, or `Deployment` + `Service` + `Ingress` to expose the daemon's web UI long-running. Pro adds AI features (review, auto-fix, conflicts, changelog, reports), rich notifications, vault integrations, and SAML SSO/RBAC on top of the same daemon.

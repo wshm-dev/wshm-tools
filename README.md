@@ -6,7 +6,7 @@
 
 ### Your repo's wish is my command.
 
-**Five tools in one binary.** Replace CodeRabbit, Graphite, Sweep AI, Mergify, and manual triage with a single self-hosted Rust binary.
+**Five tools in one binary.** AI code review, merge queue, issue auto-fix, workflow automation, and triage — all in a single self-hosted Rust binary.
 
 Works with GitHub, GitLab, Gitea, and Azure DevOps. Plug in Claude Max, OpenAI, or a local Ollama — your call. Your AI keys. Your data. No SaaS dependency.
 
@@ -34,17 +34,17 @@ You shipped the code. Now you spend your Mondays triaging a hundred stale issues
 
 wshm does the boring parts so you can stay in flow.
 
-### Replace five tools with one
+### Five tools, one binary
 
-| Need                  | Typical tool  | Typical price     | wshm              |
-|-----------------------|---------------|-------------------|-------------------|
-| AI code review        | CodeRabbit    | $24 / dev / mo    | included          |
-| Merge queue           | Graphite      | $40 / user / mo   | included          |
-| Issue auto-fix        | Sweep AI      | $120–240 / mo     | included (Pro)    |
-| Workflow automation   | Mergify       | $15–30 / user / mo| included          |
-| Issue triage          | Manual        | Engineer hours    | automated         |
+| Need                  | wshm              |
+|-----------------------|-------------------|
+| AI code review        | included          |
+| Merge queue           | included          |
+| Issue auto-fix        | included (Pro)    |
+| Workflow automation   | included          |
+| Issue triage          | automated         |
 
-A 5-dev team pays **$870+/mo** for equivalent coverage across those tools. wshm is one binary, self-hosted, your AI keys.
+One binary, self-hosted, your AI keys. Your data stays yours.
 
 ### Pain → gain
 
@@ -161,6 +161,7 @@ wshm was born out of a real need: triaging the growing backlog of issues and pul
 - **Revert** — undo all wshm actions (remove comments, labels, clear analyses)
 - **Webhook notifications** — generic HTTP webhooks with HMAC signing
 - **TUI** — rich interactive terminal UI (issues, PRs, queue, stats)
+- **Daemon + Web dashboard** — persistent multi-repo background service with embedded Svelte web UI (issues, PRs, queue, triage, settings)
 - **Context export** — dump repo context as LLM-ready markdown
 - **Migrate** — move data between SQLite and PostgreSQL
 - **14 AI providers** — Anthropic, OpenAI, Google, Mistral, Groq, DeepSeek, xAI, Ollama (local), llama.cpp, and more
@@ -171,12 +172,10 @@ wshm was born out of a real need: triaging the growing backlog of issues and pul
 
 ### Pro ([wshm.dev/pro](https://wshm.dev/pro))
 
-Persistent automation, token-heavy AI features, and enterprise integrations:
+Token-heavy AI features and enterprise integrations layered on top of the OSS daemon:
 
-- **Daemon** — persistent multi-repo background service with webhook server and embedded Svelte web dashboard
 - **Rich notifications** — Discord, Slack, Teams (in addition to the Free webhook sink)
 - **Changelog** — AI-generated changelog from merged PRs (markdown, JSON)
-- **Dashboard** — HTML metrics dashboard with Chart.js graphs
 - **HTML/PDF reports** — full repo health reports with SLA metrics
 - **Inline code review** — line-by-line AI review on PR diffs
 - **Auto-fix** — generate PRs from issue descriptions (Claude Code / Codex / containerized)
@@ -194,7 +193,7 @@ Persistent automation, token-heavy AI features, and enterprise integrations:
 
 ## Interfaces
 
-wshm ships three interfaces out of the box (Free) plus a persistent daemon + web dashboard (Pro).
+wshm ships four interfaces out of the box, all in OSS: CLI, TUI, daemon, and an embedded Svelte web dashboard.
 
 ### CLI (Free)
 
@@ -220,9 +219,9 @@ wshm tui
   <img src="docs/assets/wshm-tui-stats.png" alt="wshm TUI — stats"  width="32%" />
 </p>
 
-### Daemon + Web dashboard (Pro)
+### Daemon + Web dashboard (Free)
 
-The daemon is a long-running multi-repo service: webhook server, scheduled triage, rich notifications (Discord/Slack/Teams), and an embedded Svelte web dashboard served on `https://127.0.0.1:3000`.
+The daemon is a long-running multi-repo service: webhook server, scheduled triage, generic webhook notifications, and an embedded Svelte web dashboard served on `https://127.0.0.1:3000`. Pro plans add rich notifications (Discord/Slack/Teams) and the AI features (review, auto-fix, changelog, reports) on top of this same daemon.
 
 ```bash
 wshm daemon --config /etc/wshm/global.toml --poll
