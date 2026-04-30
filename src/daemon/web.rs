@@ -303,6 +303,49 @@ async fn api_auth_login(
         .into_response()
 }
 
+/// GET /api/v1/auth/me -- return the identity of the current user.
+/// Reads oauth2-proxy forwarded headers when present (SSO), otherwise falls
+/// back to the configured `[web].username` (cookie / Basic Auth).
+async fn api_auth_me(
+    State(state): State<Arc<WebState>>,
+    headers: HeaderMap,
+) -> Response {
+    let email = headers
+        .get("x-auth-request-email")
+        .or_else(|| headers.get("x-forwarded-email"))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let user = headers
+        .get("x-forwarded-user")
+        .or_else(|| headers.get("x-forwarded-preferred-username"))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    if email.is_some() || user.is_some() {
+        return Json(json!({
+            "email": email,
+            "username": user,
+            "auth_method": "sso",
+        }))
+        .into_response();
+    }
+
+    let repos = state.multi.repos.read().await;
+    let username = repos
+        .values()
+        .next()
+        .map(|ds| ds.config.web.username.clone())
+        .unwrap_or_else(|| "user".to_string());
+    drop(repos);
+
+    Json(json!({
+        "email": null,
+        "username": username,
+        "auth_method": "local",
+    }))
+    .into_response()
+}
+
 /// POST /api/v1/auth/logout -- clear the `wshm_session` cookie.
 async fn api_auth_logout() -> Response {
     let cookie_header =
@@ -1495,6 +1538,7 @@ pub fn oss_api_routes() -> Router<Arc<WebState>> {
         .route("/api/v1/auth/anthropic", post(api_auth_anthropic))
         .route("/api/v1/auth/login", post(api_auth_login))
         .route("/api/v1/auth/logout", post(api_auth_logout))
+        .route("/api/v1/auth/me", get(api_auth_me))
         .route("/api/v1/summary", get(api_summary))
 }
 

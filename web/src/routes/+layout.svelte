@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { selectedRepo, theme, type Theme } from '$lib/stores';
-	import { fetchStatus, type RepoInfo } from '$lib/api';
+	import { fetchStatus, fetchMe, type RepoInfo, type Me } from '$lib/api';
 	import '../app.css';
 
 	let { children }: { children: Snippet } = $props();
@@ -12,7 +12,16 @@
 	let repos: RepoInfo[] = $state([]);
 	let collapsed: boolean = $state(false);
 	let currentTheme: Theme = $state('dark');
+	let me: Me | null = $state(null);
 	theme.subscribe((t) => (currentTheme = t));
+
+	function meLabel(m: Me): string {
+		return m.email ?? m.username ?? 'signed in';
+	}
+	function meInitial(m: Me): string {
+		const s = m.email ?? m.username ?? '?';
+		return s.charAt(0).toUpperCase();
+	}
 
 	function toggleTheme() {
 		theme.set(currentTheme === 'dark' ? 'light' : 'dark');
@@ -76,6 +85,9 @@
 			const status = await fetchStatus();
 			repos = status.repos;
 		} catch { /* ignore */ }
+		try {
+			me = await fetchMe();
+		} catch { /* ignore — public-page calls or unauth states */ }
 	});
 </script>
 
@@ -169,6 +181,21 @@
 			{/each}
 		</div>
 
+		{#if me}
+			<div class="border-t border-gray-700 px-2 py-2 flex items-center gap-2 {collapsed ? 'justify-center' : ''}" title={meLabel(me)}>
+				<div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
+					{meInitial(me)}
+				</div>
+				{#if !collapsed}
+					<div class="min-w-0 flex-1">
+						<div class="truncate text-xs text-gray-200">{meLabel(me)}</div>
+						<div class="text-[0.625rem] uppercase tracking-wider text-gray-500">
+							{me.auth_method === 'sso' ? 'SSO' : 'local'}
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
 		<div class="border-t border-gray-700 px-2 py-2 flex items-center gap-1 {collapsed ? 'flex-col' : 'justify-between'}">
 			<button
 				onclick={handleLogout}

@@ -355,3 +355,13 @@ export function setGithubToken(token: string): Promise<{ status: string; message
 export function setAnthropicToken(token: string, kind: 'oauth' | 'api_key'): Promise<{ status: string; message: string }> {
 	return apiPost('/auth/anthropic', { token, kind });
 }
+
+export interface Me {
+	email: string | null;
+	username: string | null;
+	auth_method: 'sso' | 'local';
+}
+
+export function fetchMe(): Promise<Me> {
+	return apiGet<Me>('/auth/me');
+}
