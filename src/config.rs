@@ -1046,6 +1046,7 @@ pub struct GlobalConfig {
     #[serde(default)]
     pub update: UpdateConfig,
 
+    #[serde(default)]
     pub repos: Vec<RepoEntry>,
 }
 
