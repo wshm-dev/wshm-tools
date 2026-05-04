@@ -15,14 +15,29 @@ async function apiGet<T>(path: string, params?: Record<string, string>): Promise
 	for (const [key, value] of Object.entries(merged)) {
 		url.searchParams.set(key, value);
 	}
-	const res = await fetch(url.toString());
+	// `redirect: 'manual'` so we can detect the oauth2-proxy 302 → Google
+	// instead of the browser silently following a cross-origin redirect
+	// (which would reject with `TypeError: Failed to fetch`).
+	let res: Response;
+	try {
+		res = await fetch(url.toString(), { redirect: 'manual' });
+	} catch (e) {
+		// Network error or rejected cross-origin redirect — most often this
+		// means the SSO session expired. Bounce to sign-in.
+		try { window.location.href = '/oauth2/sign_in?rd=' + encodeURIComponent(window.location.pathname); }
+		catch { /* SSR */ }
+		throw e;
+	}
+	// `type === 'opaqueredirect'` means oauth2-proxy returned a 302 we did
+	// not follow. Same handling as above.
+	if (res.type === 'opaqueredirect' || res.status === 0) {
+		try { window.location.href = '/oauth2/sign_in?rd=' + encodeURIComponent(window.location.pathname); }
+		catch { /* SSR */ }
+		throw new Error('Session expired — redirecting to sign in');
+	}
 	if (!res.ok) {
 		throw new Error(`API error: ${res.status} ${res.statusText}`);
 	}
-	// oauth2-proxy returns HTML (302 → Google login) when the SSO session
-	// expired silently. Without this guard `res.json()` throws an opaque
-	// "Unexpected token '<'" — instead we redirect to /login so the user
-	// re-authenticates and the next call succeeds.
 	const ct = res.headers.get('content-type') ?? '';
 	if (ct.includes('text/html')) {
 		try { window.location.href = '/oauth2/sign_in?rd=' + encodeURIComponent(window.location.pathname); }
