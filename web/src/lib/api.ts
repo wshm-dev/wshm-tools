@@ -389,12 +389,16 @@ export interface LogsResponse {
 }
 
 export function fetchLogs(opts: { tail?: number; level?: string; since?: number } = {}): Promise<LogsResponse> {
-	const params = new URLSearchParams();
-	if (opts.tail !== undefined) params.set('tail', String(opts.tail));
-	if (opts.level) params.set('level', opts.level);
-	if (opts.since !== undefined) params.set('since', String(opts.since));
-	const qs = params.toString();
-	return apiGet<LogsResponse>(`/logs${qs ? `?${qs}` : ''}`);
+	// Params go through apiGet's second argument so they get attached via
+	// URLSearchParams. Putting them in the path string causes apiGet's
+	// `url.pathname = ${BASE}${path}` to percent-encode the `?`, which
+	// makes oauth2-proxy hand the request to the SPA fallback (returns
+	// HTML and breaks JSON parsing).
+	const params: Record<string, string> = {};
+	if (opts.tail !== undefined) params.tail = String(opts.tail);
+	if (opts.level) params.level = opts.level;
+	if (opts.since !== undefined) params.since = String(opts.since);
+	return apiGet<LogsResponse>('/logs', params);
 }
 
 export interface SecretRecord {
