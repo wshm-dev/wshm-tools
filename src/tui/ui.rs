@@ -39,6 +39,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         Tab::Queue => draw_queue(f, app, chunks[2]),
         Tab::Stats => draw_stats_tab(f, app, chunks[2]),
         Tab::Activity => draw_activity(f, app, chunks[2]),
+        Tab::Triage => draw_triage(f, app, chunks[2]),
+        Tab::Changelog => draw_changelog(f, app, chunks[2]),
     }
 
     // Action detail popup
@@ -1361,9 +1363,151 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(content, area);
 }
 
+fn priority_color(p: Option<&str>) -> Color {
+    match p {
+        Some("critical") | Some("high") => Color::Red,
+        Some("medium") => Color::Yellow,
+        Some("low") => Color::Blue,
+        _ => Color::DarkGray,
+    }
+}
+
+fn category_short(c: &str) -> &str {
+    match c {
+        "bug" => "BUG",
+        "feature" => "FEAT",
+        "duplicate" => "DUP",
+        "wontfix" => "WONT",
+        "needs-info" => "INFO",
+        "question" => "Q",
+        "docs" => "DOCS",
+        _ => c,
+    }
+}
+
+fn draw_triage(f: &mut Frame, app: &App, area: Rect) {
+    let header = Row::new(vec![
+        Cell::from("#"),
+        Cell::from("Cat"),
+        Cell::from("Prio"),
+        Cell::from("Conf"),
+        Cell::from("Summary"),
+        Cell::from("Acted"),
+    ])
+    .style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let rows: Vec<Row> = app
+        .triage_all
+        .iter()
+        .skip(app.scroll_offset)
+        .take(area.height.saturating_sub(3) as usize)
+        .map(|t| {
+            let summary = t
+                .summary
+                .as_deref()
+                .unwrap_or("")
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string();
+            Row::new(vec![
+                Cell::from(format!("#{}", t.issue_number)).style(Style::default().fg(Color::Cyan)),
+                Cell::from(category_short(&t.category)),
+                Cell::from(t.priority.as_deref().unwrap_or("-").to_string())
+                    .style(Style::default().fg(priority_color(t.priority.as_deref()))),
+                Cell::from(format!("{:.0}%", t.confidence * 100.0)),
+                Cell::from(truncate(&summary, 70)),
+                Cell::from(t.acted_at.chars().take(10).collect::<String>())
+                    .style(Style::default().fg(Color::DarkGray)),
+            ])
+        })
+        .collect();
+
+    let widths = [
+        Constraint::Length(7),
+        Constraint::Length(5),
+        Constraint::Length(6),
+        Constraint::Length(5),
+        Constraint::Min(20),
+        Constraint::Length(11),
+    ];
+
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(Block::default().borders(Borders::ALL).title(format!(
+            " Triage Results ({} total) ",
+            app.triage_all.len()
+        )));
+    f.render_widget(table, area);
+}
+
+fn draw_changelog(f: &mut Frame, app: &App, area: Rect) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    if app.changelog.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "No closed PRs yet.",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        // Group by section, preserving the order the sections appear in.
+        let mut sections: Vec<(&'static str, Vec<&crate::tui::app::ChangelogEntry>)> = Vec::new();
+        for entry in &app.changelog {
+            if let Some(s) = sections.iter_mut().find(|(name, _)| *name == entry.section) {
+                s.1.push(entry);
+            } else {
+                sections.push((entry.section, vec![entry]));
+            }
+        }
+
+        for (section, entries) in sections {
+            lines.push(Line::from(Span::styled(
+                section,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            for e in entries {
+                let author = e
+                    .author
+                    .as_deref()
+                    .map(|a| format!(" — @{a}"))
+                    .unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  #{} ", e.number),
+                        Style::default().fg(Color::Yellow),
+                    ),
+                    Span::raw(truncate(&e.title, 80)),
+                    Span::styled(author, Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("  {}", e.merged_at.chars().take(10).collect::<String>()),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]));
+            }
+            lines.push(Line::from(""));
+        }
+    }
+
+    let total = app.changelog.len();
+    let para = Paragraph::new(lines)
+        .scroll((app.scroll_offset as u16, 0))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" Changelog ({total} closed PRs) ")),
+        );
+    f.render_widget(para, area);
+}
+
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let mut spans = vec![
-        Span::styled(" 1-5 ", Style::default().fg(Color::Cyan)),
+        Span::styled(" 1-9 ", Style::default().fg(Color::Cyan)),
         Span::raw("tabs  "),
         Span::styled("j/k ", Style::default().fg(Color::Cyan)),
         Span::raw("scroll  "),
