@@ -345,13 +345,29 @@ async fn auth_middleware(
         .unwrap_or("");
     let wants_json = path.starts_with("/api/") || accept.contains("application/json");
 
+    // Detect SPA/browser fetches so we don't trigger the native Basic Auth
+    // dialog. CLI clients (curl) don't send Sec-Fetch-* or Origin and still
+    // get the WWW-Authenticate challenge.
+    let headers = req.headers();
+    let is_browser_fetch = headers.contains_key("sec-fetch-mode")
+        || headers.contains_key("sec-fetch-site")
+        || headers.contains_key("origin");
+
     if wants_json {
-        (
-            StatusCode::UNAUTHORIZED,
-            [(header::WWW_AUTHENTICATE, "Basic realm=\"wshm\"")],
-            Json(json!({"error": "unauthorized"})),
-        )
-            .into_response()
+        if is_browser_fetch {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "unauthorized"})),
+            )
+                .into_response()
+        } else {
+            (
+                StatusCode::UNAUTHORIZED,
+                [(header::WWW_AUTHENTICATE, "Basic realm=\"wshm\"")],
+                Json(json!({"error": "unauthorized"})),
+            )
+                .into_response()
+        }
     } else {
         (
             StatusCode::FOUND,
