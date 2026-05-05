@@ -5,7 +5,7 @@
 	import { multiSort, toggleSort as toggle, sortArrow, sortIndex, sortArrowClass, type SortColumn } from '$lib/sort';
 	import { applyFilters } from '$lib/filter';
 	import { paginate, totalPages, PAGE_SIZE } from '$lib/paginate';
-	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge } from 'flowbite-svelte';
+	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input } from 'flowbite-svelte';
 
 	let results: TriageResult[] = $state([]);
 	let error: string | null = $state(null);
@@ -101,11 +101,11 @@
 			</TableHead>
 			<TableBody>
 				<TableBodyRow class="border-b border-gray-700">
-					<TableBodyCell class="px-2 py-1"><input type="text" bind:value={filters.issue_number} placeholder="#" class="w-full rounded border border-gray-600 bg-gray-900 px-1 py-0.5 text-xs text-gray-300 focus:border-blue-500 focus:outline-none" /></TableBodyCell>
-					<TableBodyCell class="px-2 py-1"><input type="text" bind:value={filters.category} placeholder="filter..." class="w-full rounded border border-gray-600 bg-gray-900 px-1 py-0.5 text-xs text-gray-300 focus:border-blue-500 focus:outline-none" /></TableBodyCell>
-					<TableBodyCell class="px-2 py-1"><input type="text" bind:value={filters.confidence} placeholder=">85" class="w-full rounded border border-gray-600 bg-gray-900 px-1 py-0.5 text-xs text-gray-300 focus:border-blue-500 focus:outline-none" /></TableBodyCell>
-					<TableBodyCell class="px-2 py-1"><input type="text" bind:value={filters.priority} placeholder="filter..." class="w-full rounded border border-gray-600 bg-gray-900 px-1 py-0.5 text-xs text-gray-300 focus:border-blue-500 focus:outline-none" /></TableBodyCell>
-					<TableBodyCell class="px-2 py-1"><input type="text" bind:value={filters.acted_at} placeholder="filter..." class="w-full rounded border border-gray-600 bg-gray-900 px-1 py-0.5 text-xs text-gray-300 focus:border-blue-500 focus:outline-none" /></TableBodyCell>
+					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.issue_number} placeholder="#" size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
+					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.category} placeholder="filter..." size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
+					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.confidence} placeholder=">85" size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
+					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.priority} placeholder="filter..." size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
+					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.acted_at} placeholder="filter..." size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
 				</TableBodyRow>
 				{#each paged as result}
 					<TableBodyRow>
