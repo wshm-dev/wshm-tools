@@ -9,5 +9,13 @@
 	"login.failed": "Logowanie nie powiodło się",
 	"login.googleButton": "Zaloguj się przez Google",
 	"login.tagline": "Czarodziej, który sortuje twoje pull requesty",
-	"common.or": "lub"
+	"common.or": "lub",
+	"secrets.help.title": "Jak utworzyć token GitHub",
+	"secrets.help.intro": "wshm używa tokenu GitHub do odczytu issue / PR-ów i (opcjonalnie) publikowania komentarzy i etykiet. Bez tokenu tryb anonimowy ogranicza Cię do 60 zapytań/h tylko dla publicznych repozytoriów.",
+	"secrets.help.step1": "Otwórz github.com/settings/tokens i kliknij „Generate new token (classic)\".",
+	"secrets.help.step2": "Wybierz nazwę (np. „wshm-cloud\") i datę wygaśnięcia (zalecane 90 dni).",
+	"secrets.help.step3": "Scopes: zostaw puste dla odczytu publicznych repo (5 000 zapytań/h, bez komentowania); wybierz „public_repo\", jeśli wshm ma dodawać etykiety i komentarze.",
+	"secrets.help.step4": "Kliknij Generate, skopiuj token („ghp_…\") i wklej tutaj jako Value z kluczem „github_token\".",
+	"secrets.help.tip": "Już zalogowany przez gh CLI? Wykonaj „gh auth token\" i wklej wynik. Uwaga: to Twój osobisty token — działania wshm będą wyświetlane pod Twoim imieniem.",
+	"secrets.help.link": "Otwórz github.com/settings/tokens"
 }

@@ -9,5 +9,13 @@
 	"login.failed": "فشل تسجيل الدخول",
 	"login.googleButton": "تسجيل الدخول باستخدام Google",
 	"login.tagline": "الساحر الذي يفرز طلبات السحب الخاصة بك",
-	"common.or": "أو"
+	"common.or": "أو",
+	"secrets.help.title": "كيفية إنشاء رمز GitHub",
+	"secrets.help.intro": "يستخدم wshm رمز GitHub لقراءة المشكلات / طلبات السحب و(اختياريًا) نشر التعليقات والتسميات. بدون رمز، يقصرك الوضع المجهول على 60 طلبًا/ساعة على مستودعات عامة للقراءة فقط.",
+	"secrets.help.step1": "افتح github.com/settings/tokens وانقر على «Generate new token (classic)».",
+	"secrets.help.step2": "اختر اسمًا (مثلاً «wshm-cloud») وانتهاء صلاحية (يُنصح بـ 90 يومًا).",
+	"secrets.help.step3": "Scopes: اتركها فارغة لقراءة المستودعات العامة فقط (5 000 طلب/ساعة، بدون تعليقات)؛ اختر «public_repo» إذا أردت أن يضع wshm تسميات وتعليقات.",
+	"secrets.help.step4": "انقر Generate، انسخ الرمز («ghp_…»)، والصقه هنا كقيمة Value مع المفتاح «github_token».",
+	"secrets.help.tip": "هل أنت مسجَّل بالفعل عبر gh CLI؟ شغّل «gh auth token» والصق الناتج. تنبيه: هذا رمزك الشخصي — ستظهر إجراءات wshm باسمك.",
+	"secrets.help.link": "فتح github.com/settings/tokens"
 }

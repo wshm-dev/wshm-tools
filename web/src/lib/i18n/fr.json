@@ -9,5 +9,13 @@
 	"login.failed": "Échec de la connexion",
 	"login.googleButton": "Se connecter avec Google",
 	"login.tagline": "Le magicien qui trie vos pull requests",
-	"common.or": "ou"
+	"common.or": "ou",
+	"secrets.help.title": "Comment créer un token GitHub",
+	"secrets.help.intro": "wshm utilise un token GitHub pour lire les issues / PRs et (optionnellement) poster des commentaires et labels. Sans token, le mode anonyme limite à 60 req/h sur les repos publics en lecture seule.",
+	"secrets.help.step1": "Ouvre github.com/settings/tokens et clique « Generate new token (classic) ».",
+	"secrets.help.step2": "Choisis un nom (ex. « wshm-cloud ») et une expiration (90 jours recommandés).",
+	"secrets.help.step3": "Scopes : laisse vide pour la lecture seule des repos publics (5 000 req/h, sans commenter) ; coche « public_repo » si tu veux que wshm pose labels et commentaires.",
+	"secrets.help.step4": "Clique Generate, copie le token (« ghp_… »), colle-le ici en tant que Value avec la clé « github_token ».",
+	"secrets.help.tip": "Déjà connecté via gh CLI ? Lance « gh auth token » et colle le résultat. Attention : c'est ton token perso — les actions wshm apparaîtront sous ton nom.",
+	"secrets.help.link": "Ouvrir github.com/settings/tokens"
 }

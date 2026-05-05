@@ -9,5 +9,13 @@
 	"login.failed": "Ошибка входа",
 	"login.googleButton": "Войти через Google",
 	"login.tagline": "Волшебник, который сортирует ваши pull request'ы",
-	"common.or": "или"
+	"common.or": "или",
+	"secrets.help.title": "Как создать токен GitHub",
+	"secrets.help.intro": "wshm использует токен GitHub для чтения issue / PR и (опционально) для публикации комментариев и меток. Без токена анонимный режим ограничивает 60 запросов/ч и только публичные репозитории на чтение.",
+	"secrets.help.step1": "Откройте github.com/settings/tokens и нажмите «Generate new token (classic)».",
+	"secrets.help.step2": "Выберите имя (например, «wshm-cloud») и срок действия (рекомендуем 90 дней).",
+	"secrets.help.step3": "Scopes: оставьте пустыми для чтения публичных репозиториев (5 000 запросов/ч, без комментариев); выберите «public_repo», если хотите, чтобы wshm ставил метки и комментарии.",
+	"secrets.help.step4": "Нажмите Generate, скопируйте токен («ghp_…»), вставьте сюда как Value с ключом «github_token».",
+	"secrets.help.tip": "Уже вошли через gh CLI? Запустите «gh auth token» и вставьте вывод. Внимание: это ваш личный токен — действия wshm будут отображаться от вашего имени.",
+	"secrets.help.link": "Открыть github.com/settings/tokens"
 }

@@ -9,5 +9,13 @@
 	"login.failed": "登录失败",
 	"login.googleButton": "使用 Google 登录",
 	"login.tagline": "为你整理 pull request 的魔法师",
-	"common.or": "或"
+	"common.or": "或",
+	"secrets.help.title": "如何创建 GitHub 令牌",
+	"secrets.help.intro": "wshm 使用 GitHub 令牌来读取 issue / PR,并(可选)发布评论和标签。没有令牌时,匿名模式将你限制为 60 请求/小时且仅可读取公开仓库。",
+	"secrets.help.step1": "打开 github.com/settings/tokens,点击 \"Generate new token (classic)\"。",
+	"secrets.help.step2": "选择一个名称(如 \"wshm-cloud\")和过期时间(建议 90 天)。",
+	"secrets.help.step3": "Scopes:留空可只读公开仓库(5 000 请求/小时,不能评论);如果需要 wshm 添加标签或评论,请勾选 \"public_repo\"。",
+	"secrets.help.step4": "点击 Generate,复制令牌(\"ghp_…\"),粘贴到此处作为 Value,Key 设为 \"github_token\"。",
+	"secrets.help.tip": "已通过 gh CLI 登录?运行 \"gh auth token\" 然后粘贴输出。注意:那是你的个人令牌 — wshm 的操作将以你名义出现。",
+	"secrets.help.link": "打开 github.com/settings/tokens"
 }

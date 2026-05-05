@@ -21,6 +21,10 @@
 		Modal,
 	} from 'flowbite-svelte';
 	import { colorConfig, type ColorConfig } from '$lib/colors';
+	import { t } from '$lib/i18n';
+
+	let translate = $state<(k: string) => string>((k) => k);
+	t.subscribe((fn) => (translate = fn));
 	import {
 		fetchLicense,
 		activateLicense,
@@ -665,6 +669,34 @@
 
 	<!-- ========================= SECRETS ============================ -->
 	<TabItem title="Secrets">
+		<!-- Doc / how-to: create a github_token. Toggleable so admins
+		     who already know the drill don't see it every visit. -->
+		<details class="mb-4 rounded border border-gray-700 bg-gray-800/60 open:bg-gray-800">
+			<summary class="cursor-pointer px-4 py-3 text-sm font-semibold text-blue-300 hover:text-blue-200">
+				ℹ️ {translate('secrets.help.title')}
+			</summary>
+			<div class="px-4 pb-4 pt-1 text-sm text-gray-300 space-y-2">
+				<p>{translate('secrets.help.intro')}</p>
+				<ol class="list-decimal list-inside space-y-1 ms-2">
+					<li>{translate('secrets.help.step1')}</li>
+					<li>{translate('secrets.help.step2')}</li>
+					<li>{translate('secrets.help.step3')}</li>
+					<li>{translate('secrets.help.step4')}</li>
+				</ol>
+				<p class="text-xs text-gray-400 italic">
+					💡 {translate('secrets.help.tip')}
+				</p>
+				<a
+					href="https://github.com/settings/tokens"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="inline-block mt-1 text-blue-400 hover:text-blue-300 underline text-xs"
+				>
+					→ {translate('secrets.help.link')}
+				</a>
+			</div>
+		</details>
+
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 			<!-- Stored secrets list -->
 			<Card class="bg-gray-800 border-gray-700 max-w-none">

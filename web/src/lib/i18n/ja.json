@@ -9,5 +9,13 @@
 	"login.failed": "ログインに失敗しました",
 	"login.googleButton": "Google でログイン",
 	"login.tagline": "プルリクエストを仕分けする魔法使い",
-	"common.or": "または"
+	"common.or": "または",
+	"secrets.help.title": "GitHub トークンの作成方法",
+	"secrets.help.intro": "wshm は GitHub トークンを使って issue / PR を読み取り、(任意で) コメントやラベルを投稿します。トークンがない場合、匿名モードは 60 リクエスト/時、パブリックリポジトリの読み取り専用に制限されます。",
+	"secrets.help.step1": "github.com/settings/tokens を開き、「Generate new token (classic)」をクリックします。",
+	"secrets.help.step2": "名前 (例: 「wshm-cloud」) と有効期限 (90 日推奨) を選びます。",
+	"secrets.help.step3": "Scopes: パブリックリポジトリの読み取り専用なら空のまま (5 000 リクエスト/時、コメント不可)。wshm にラベルやコメントをさせたい場合は「public_repo」を選択。",
+	"secrets.help.step4": "Generate をクリックし、トークン (「ghp_…」) をコピーして、ここに Value としてキー「github_token」で貼り付けます。",
+	"secrets.help.tip": "gh CLI でログイン済みですか? 「gh auth token」を実行して出力を貼り付けてください。注意: それは個人のトークンです — wshm の操作はあなたの名義で表示されます。",
+	"secrets.help.link": "github.com/settings/tokens を開く"
 }
