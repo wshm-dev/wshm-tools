@@ -25,6 +25,8 @@ pub enum Tab {
     Queue,
     Stats,
     Activity,
+    Triage,
+    Changelog,
 }
 
 impl Tab {
@@ -38,6 +40,8 @@ impl Tab {
             Tab::Queue => "Merge Queue",
             Tab::Stats => "Stats",
             Tab::Activity => "Activity",
+            Tab::Triage => "Triage",
+            Tab::Changelog => "Changelog",
         }
     }
 
@@ -51,6 +55,8 @@ impl Tab {
             Tab::Queue,
             Tab::Stats,
             Tab::Activity,
+            Tab::Triage,
+            Tab::Changelog,
         ]
     }
 }
@@ -160,6 +166,8 @@ pub struct App {
     pub conflict_count: usize,
     pub stats: Stats,
     pub activity: Vec<TriageResultRow>,
+    pub triage_all: Vec<TriageResultRow>,
+    pub changelog: Vec<ChangelogEntry>,
     pub logs: Vec<LogEntry>,
     pub actions: Vec<ActionItem>,
     pub repos: Vec<RepoRow>,
@@ -211,6 +219,16 @@ pub enum SettingKind {
     Label,  // read-only info
 }
 
+/// One entry in the Changelog tab — a closed pull request.
+#[derive(Clone)]
+pub struct ChangelogEntry {
+    pub section: &'static str,
+    pub number: u64,
+    pub title: String,
+    pub author: Option<String>,
+    pub merged_at: String,
+}
+
 #[derive(Clone)]
 pub struct RepoRow {
     pub slug: String,
@@ -252,6 +270,8 @@ impl App {
                 avg_pr_age_days: 0,
             },
             activity: Vec::new(),
+            triage_all: Vec::new(),
+            changelog: Vec::new(),
             logs: Vec::new(),
             actions: Vec::new(),
             repos: Vec::new(),
@@ -272,7 +292,70 @@ impl App {
         app.load_actions();
         app.refresh(db)?;
         app.load_summary(config, db);
+        app.load_triage_all(db);
+        app.load_changelog(db);
         Ok(app)
+    }
+
+    /// Load all triage results, most recent first. Used by the Triage tab.
+    pub fn load_triage_all(&mut self, db: &Database) {
+        match db.recent_activity(500) {
+            Ok(rows) => self.triage_all = rows,
+            Err(_) => self.triage_all = Vec::new(),
+        }
+    }
+
+    /// Load closed pull requests, group them by conventional-commit section.
+    /// Same logic as the web /api/v1/changelog endpoint.
+    pub fn load_changelog(&mut self, db: &Database) {
+        let rows = db
+            .with_conn(|conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT number, title, author, updated_at
+                     FROM pull_requests WHERE state = 'closed'
+                     ORDER BY updated_at DESC LIMIT 100",
+                )?;
+                let rows = stmt
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, u64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, Option<String>>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    })?
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap_or_default();
+
+        self.changelog = rows
+            .into_iter()
+            .map(|(number, title, author, merged_at)| {
+                let section = if title.starts_with("feat") {
+                    "Features"
+                } else if title.starts_with("fix") {
+                    "Bug Fixes"
+                } else if title.starts_with("docs") {
+                    "Documentation"
+                } else if title.starts_with("chore") || title.starts_with("ci") {
+                    "Chores"
+                } else if title.starts_with("refactor") {
+                    "Refactoring"
+                } else if title.starts_with("test") {
+                    "Tests"
+                } else {
+                    "Other"
+                };
+                ChangelogEntry {
+                    section,
+                    number,
+                    title,
+                    author,
+                    merged_at,
+                }
+            })
+            .collect();
     }
 
     pub fn load_summary(&mut self, config: &Config, db: &Database) {
@@ -549,6 +632,8 @@ impl App {
             Tab::Repos => self.repos.len(),
             Tab::Action => self.actions.len(),
             Tab::Activity => self.logs.len(),
+            Tab::Triage => self.triage_all.len(),
+            Tab::Changelog => self.changelog.len(),
             Tab::Summary => 0,
         }
     }

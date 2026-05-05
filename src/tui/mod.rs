@@ -135,6 +135,14 @@ fn run_loop(
                         KeyCode::Char('5') => app.active_tab = app::Tab::Queue,
                         KeyCode::Char('6') => app.active_tab = app::Tab::Stats,
                         KeyCode::Char('7') => app.active_tab = app::Tab::Activity,
+                        KeyCode::Char('8') => {
+                            app.load_triage_all(db);
+                            app.active_tab = app::Tab::Triage;
+                        }
+                        KeyCode::Char('9') => {
+                            app.load_changelog(db);
+                            app.active_tab = app::Tab::Changelog;
+                        }
                         KeyCode::Enter => {
                             if app.active_tab == app::Tab::Repos {
                                 app.open_settings();
@@ -153,6 +161,8 @@ fn run_loop(
                             app.refresh(db)?;
                             app.load_repos();
                             app.load_actions();
+                            app.load_triage_all(db);
+                            app.load_changelog(db);
                         }
                         KeyCode::Char('n') if app.active_tab == app::Tab::Repos => {
                             app.start_add_repo();
