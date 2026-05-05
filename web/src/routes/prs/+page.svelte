@@ -5,8 +5,8 @@
 	import { multiSort, toggleSort as toggle, sortArrow, sortIndex, sortArrowClass, type SortColumn } from '$lib/sort';
 	import { applyFilters } from '$lib/filter';
 	import { paginate, totalPages, PAGE_SIZE } from '$lib/paginate';
-	import { goto } from '$app/navigation';
-	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input } from 'flowbite-svelte';
+	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input, Modal } from 'flowbite-svelte';
+	import PrDetail from '$lib/components/PrDetail.svelte';
 
 	let pulls: PullRequest[] = $state([]);
 	let error: string | null = $state(null);
@@ -81,6 +81,14 @@
 		if (ci === 'failure') return 'red';
 		return 'gray';
 	}
+
+	let modalOpen = $state(false);
+	let activePr: PullRequest | null = $state(null);
+
+	function openPr(pr: PullRequest) {
+		activePr = pr;
+		modalOpen = true;
+	}
 </script>
 
 <svelte:head>
@@ -137,7 +145,7 @@
 					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.age} placeholder=">N" size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
 				</TableBodyRow>
 				{#each paged as pr}
-					<TableBodyRow class="cursor-pointer" onclick={() => goto(`/prs/${pr.number}`)}>
+					<TableBodyRow class="cursor-pointer" onclick={() => openPr(pr)}>
 						<TableBodyCell class="px-2 py-1.5 mono">{pr.number}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5 truncate">{pr.title}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5">
@@ -175,6 +183,29 @@
 			</TableBody>
 		</Table>
 	</div>
+	<Modal
+		bind:open={modalOpen}
+		size="xl"
+		dismissable
+		class="!max-w-[80vw] w-[80vw] bg-gray-900 border-gray-700"
+		bodyClass="text-gray-200"
+	>
+		{#snippet header()}
+			<div class="flex w-full items-center gap-3 pr-2">
+				<span class="mono text-gray-500 text-sm">#{activePr?.number}</span>
+				<span class="text-base font-semibold text-gray-100 truncate">{activePr?.title}</span>
+			</div>
+		{/snippet}
+		{#if activePr}
+			<PrDetail pr={activePr} />
+			<div class="text-right pt-2">
+				<a href="/prs/{activePr.number}" class="text-xs text-blue-400 hover:text-blue-300">
+					Open full page →
+				</a>
+			</div>
+		{/if}
+	</Modal>
+
 	{#if pages > 1}
 		<div class="flex items-center justify-between mt-2 text-sm text-gray-400">
 			<span>{sorted.length} results (page {page + 1}/{pages})</span>

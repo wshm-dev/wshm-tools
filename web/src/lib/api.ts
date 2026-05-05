@@ -370,7 +370,7 @@ export function setAnthropicToken(token: string, kind: 'oauth' | 'api_key'): Pro
 	return apiPost('/auth/anthropic', { token, kind });
 }
 
-export type Role = 'admin' | 'member' | 'viewer';
+export type Role = 'admin' | 'operator' | 'member' | 'viewer';
 
 export interface Me {
 	id?: number;

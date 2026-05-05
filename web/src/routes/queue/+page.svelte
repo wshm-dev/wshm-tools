@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { selectedRepo } from '$lib/stores';
-	import { fetchQueue, type QueueEntry } from '$lib/api';
+	import { fetchQueue, fetchPulls, type QueueEntry, type PullRequest } from '$lib/api';
 	import { multiSort, toggleSort as toggle, sortArrow, sortIndex, sortArrowClass, type SortColumn } from '$lib/sort';
 	import { applyFilters } from '$lib/filter';
 	import { paginate, totalPages, PAGE_SIZE } from '$lib/paginate';
-	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input } from 'flowbite-svelte';
+	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input, Modal } from 'flowbite-svelte';
+	import PrDetail from '$lib/components/PrDetail.svelte';
 
 	let entries: QueueEntry[] = $state([]);
 	let error: string | null = $state(null);
@@ -67,6 +68,26 @@
 		if (risk === 'high') return 'red';
 		return 'gray';
 	}
+
+	let modalOpen = $state(false);
+	let activePr: PullRequest | null = $state(null);
+	let prLoading = $state(false);
+	let prError: string | null = $state(null);
+
+	async function openPr(num: number) {
+		modalOpen = true;
+		activePr = null;
+		prError = null;
+		prLoading = true;
+		try {
+			const all = await fetchPulls();
+			activePr = all.find((p) => p.number === num) ?? null;
+			if (!activePr) prError = `PR #${num} not found`;
+		} catch (e) {
+			prError = e instanceof Error ? e.message : 'Failed to load';
+		}
+		prLoading = false;
+	}
 </script>
 
 <svelte:head>
@@ -121,7 +142,7 @@
 					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.risk} placeholder="filter..." size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
 				</TableBodyRow>
 				{#each paged as entry, i}
-					<TableBodyRow>
+					<TableBodyRow class="cursor-pointer" onclick={() => openPr(entry.pr_number)}>
 						<TableBodyCell class="px-2 py-1.5 mono text-gray-500 font-bold text-sm">{i + 1}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5 mono">#{entry.pr_number}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5 truncate">{entry.title}</TableBodyCell>
@@ -159,6 +180,35 @@
 			</TableBody>
 		</Table>
 	</div>
+	<Modal
+		bind:open={modalOpen}
+		size="xl"
+		dismissable
+		class="!max-w-[80vw] w-[80vw] bg-gray-900 border-gray-700"
+		bodyClass="text-gray-200"
+	>
+		{#snippet header()}
+			<div class="flex w-full items-center gap-3 pr-2">
+				<span class="mono text-gray-500 text-sm">#{activePr?.number ?? ''}</span>
+				<span class="text-base font-semibold text-gray-100 truncate">
+					{activePr?.title ?? (prLoading ? 'Loading…' : '')}
+				</span>
+			</div>
+		{/snippet}
+		{#if prLoading}
+			<p class="text-gray-500 text-sm">Loading…</p>
+		{:else if prError}
+			<p class="text-red-400 text-sm">{prError}</p>
+		{:else if activePr}
+			<PrDetail pr={activePr} />
+			<div class="text-right pt-2">
+				<a href="/prs/{activePr.number}" class="text-xs text-blue-400 hover:text-blue-300">
+					Open full page →
+				</a>
+			</div>
+		{/if}
+	</Modal>
+
 	{#if pages > 1}
 		<div class="flex items-center justify-between mt-2 text-sm text-gray-400">
 			<span>{sorted.length} results (page {page + 1}/{pages})</span>

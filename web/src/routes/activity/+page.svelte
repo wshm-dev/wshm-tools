@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { selectedRepo } from '$lib/stores';
-	import { fetchActivity, type ActivityEntry } from '$lib/api';
+	import { fetchActivity, fetchIssues, fetchPulls, type ActivityEntry, type Issue, type PullRequest } from '$lib/api';
 	import { multiSort, toggleSort as toggle, sortArrow, sortIndex, sortArrowClass, type SortColumn } from '$lib/sort';
 	import { applyFilters } from '$lib/filter';
 	import { paginate, totalPages, PAGE_SIZE } from '$lib/paginate';
-	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input } from 'flowbite-svelte';
+	import { Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input, Modal } from 'flowbite-svelte';
+	import IssueDetail from '$lib/components/IssueDetail.svelte';
+	import PrDetail from '$lib/components/PrDetail.svelte';
 
 	let activities: ActivityEntry[] = $state([]);
 	let error: string | null = $state(null);
@@ -61,6 +63,41 @@
 		if (action === 'analyze') return 'yellow';
 		return 'gray';
 	}
+
+	let issueModalOpen = $state(false);
+	let activeIssue: Issue | null = $state(null);
+	let prModalOpen = $state(false);
+	let activePr: PullRequest | null = $state(null);
+	let detailLoading = $state(false);
+	let detailError: string | null = $state(null);
+
+	async function openTarget(targetType: string, num: number) {
+		detailError = null;
+		detailLoading = true;
+		const isPr = targetType === 'pr' || targetType === 'pull' || targetType === 'pull_request';
+		if (isPr) {
+			activePr = null;
+			prModalOpen = true;
+			try {
+				const all = await fetchPulls();
+				activePr = all.find((p) => p.number === num) ?? null;
+				if (!activePr) detailError = `PR #${num} not found`;
+			} catch (e) {
+				detailError = e instanceof Error ? e.message : 'Failed to load';
+			}
+		} else {
+			activeIssue = null;
+			issueModalOpen = true;
+			try {
+				const all = await fetchIssues();
+				activeIssue = all.find((i) => i.number === num) ?? null;
+				if (!activeIssue) detailError = `Issue #${num} not found`;
+			} catch (e) {
+				detailError = e instanceof Error ? e.message : 'Failed to load';
+			}
+		}
+		detailLoading = false;
+	}
 </script>
 
 <svelte:head>
@@ -101,7 +138,7 @@
 					<TableBodyCell class="px-2 py-1"><Input type="text" bind:value={filters.summary} placeholder="filter..." size="sm" class="!py-0.5 !px-1 text-xs" /></TableBodyCell>
 				</TableBodyRow>
 				{#each paged as entry}
-					<TableBodyRow>
+					<TableBodyRow class="cursor-pointer" onclick={() => openTarget(entry.target_type, entry.target_number)}>
 						<TableBodyCell class="px-2 py-1.5 text-gray-500 whitespace-nowrap text-sm">{formatTime(entry.created_at)}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5">
 							<Badge color={actionColor(entry.action)}>{entry.action}</Badge>
@@ -117,6 +154,64 @@
 			</TableBody>
 		</Table>
 	</div>
+	<Modal
+		bind:open={issueModalOpen}
+		size="xl"
+		dismissable
+		class="!max-w-[80vw] w-[80vw] bg-gray-900 border-gray-700"
+		bodyClass="text-gray-200"
+	>
+		{#snippet header()}
+			<div class="flex w-full items-center gap-3 pr-2">
+				<span class="mono text-gray-500 text-sm">#{activeIssue?.number ?? ''}</span>
+				<span class="text-base font-semibold text-gray-100 truncate">
+					{activeIssue?.title ?? (detailLoading ? 'Loading…' : '')}
+				</span>
+			</div>
+		{/snippet}
+		{#if detailLoading}
+			<p class="text-gray-500 text-sm">Loading…</p>
+		{:else if detailError}
+			<p class="text-red-400 text-sm">{detailError}</p>
+		{:else if activeIssue}
+			<IssueDetail issue={activeIssue} />
+			<div class="text-right pt-2">
+				<a href="/issues/{activeIssue.number}" class="text-xs text-blue-400 hover:text-blue-300">
+					Open full page →
+				</a>
+			</div>
+		{/if}
+	</Modal>
+
+	<Modal
+		bind:open={prModalOpen}
+		size="xl"
+		dismissable
+		class="!max-w-[80vw] w-[80vw] bg-gray-900 border-gray-700"
+		bodyClass="text-gray-200"
+	>
+		{#snippet header()}
+			<div class="flex w-full items-center gap-3 pr-2">
+				<span class="mono text-gray-500 text-sm">#{activePr?.number ?? ''}</span>
+				<span class="text-base font-semibold text-gray-100 truncate">
+					{activePr?.title ?? (detailLoading ? 'Loading…' : '')}
+				</span>
+			</div>
+		{/snippet}
+		{#if detailLoading}
+			<p class="text-gray-500 text-sm">Loading…</p>
+		{:else if detailError}
+			<p class="text-red-400 text-sm">{detailError}</p>
+		{:else if activePr}
+			<PrDetail pr={activePr} />
+			<div class="text-right pt-2">
+				<a href="/prs/{activePr.number}" class="text-xs text-blue-400 hover:text-blue-300">
+					Open full page →
+				</a>
+			</div>
+		{/if}
+	</Modal>
+
 	{#if pages > 1}
 		<div class="flex items-center justify-between mt-2 text-sm text-gray-400">
 			<span>{sorted.length} results (page {page + 1}/{pages})</span>

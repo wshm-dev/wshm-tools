@@ -1,8 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { selectedRepo } from '$lib/stores';
-	import { fetchSummary, type Summary } from '$lib/api';
-	import { Card, Badge } from 'flowbite-svelte';
+	import {
+		fetchSummary,
+		fetchIssues,
+		fetchPulls,
+		type Summary,
+		type Issue,
+		type PullRequest
+	} from '$lib/api';
+	import { Card, Badge, Modal } from 'flowbite-svelte';
+	import IssueDetail from '$lib/components/IssueDetail.svelte';
+	import PrDetail from '$lib/components/PrDetail.svelte';
 
 	let summary: Summary | null = $state(null);
 	let error: string | null = $state(null);
@@ -27,6 +36,46 @@
 		if (p === 'medium') return 'yellow';
 		if (p === 'low') return 'blue';
 		return 'dark';
+	}
+
+	let issueModalOpen = $state(false);
+	let activeIssue: Issue | null = $state(null);
+	let issueLoading = $state(false);
+	let issueError: string | null = $state(null);
+
+	let prModalOpen = $state(false);
+	let activePr: PullRequest | null = $state(null);
+	let prLoading = $state(false);
+	let prError: string | null = $state(null);
+
+	async function openIssue(num: number) {
+		issueModalOpen = true;
+		activeIssue = null;
+		issueError = null;
+		issueLoading = true;
+		try {
+			const all = await fetchIssues();
+			activeIssue = all.find((i) => i.number === num) ?? null;
+			if (!activeIssue) issueError = `Issue #${num} not found`;
+		} catch (e) {
+			issueError = e instanceof Error ? e.message : 'Failed to load';
+		}
+		issueLoading = false;
+	}
+
+	async function openPr(num: number) {
+		prModalOpen = true;
+		activePr = null;
+		prError = null;
+		prLoading = true;
+		try {
+			const all = await fetchPulls();
+			activePr = all.find((p) => p.number === num) ?? null;
+			if (!activePr) prError = `PR #${num} not found`;
+		} catch (e) {
+			prError = e instanceof Error ? e.message : 'Failed to load';
+		}
+		prLoading = false;
 	}
 </script>
 
@@ -71,8 +120,14 @@
 			<h3 class="text-lg font-semibold text-red-400 mb-3">Action Required</h3>
 			<ul class="space-y-2">
 				{#each summary.high_priority_issues.slice(0, 10) as issue (issue.number)}
-					<li class="flex items-start gap-2 text-sm">
-						<a href="/issues/{issue.number}" class="text-yellow-400 mono hover:underline">#{issue.number}</a>
+					<li
+						class="flex items-start gap-2 text-sm cursor-pointer hover:bg-gray-700/50 rounded px-1 py-0.5"
+						onclick={() => openIssue(issue.number)}
+						onkeydown={(e) => e.key === 'Enter' && openIssue(issue.number)}
+						role="button"
+						tabindex="0"
+					>
+						<span class="text-yellow-400 mono">#{issue.number}</span>
 						<Badge color={priorityColor(issue.priority)}>{issue.priority ?? '?'}</Badge>
 						<span class="text-gray-300 flex-1">{issue.title}</span>
 						{#if issue.age_days > 0}<span class="text-gray-500 text-xs">{issue.age_days}d</span>{/if}
@@ -87,8 +142,14 @@
 			<h3 class="text-lg font-semibold text-purple-400 mb-3">Attention PRs</h3>
 			<ul class="space-y-2">
 				{#each summary.high_risk_prs.slice(0, 10) as pr (pr.number)}
-					<li class="flex items-start gap-2 text-sm">
-						<a href="/prs/{pr.number}" class="text-yellow-400 mono hover:underline">#{pr.number}</a>
+					<li
+						class="flex items-start gap-2 text-sm cursor-pointer hover:bg-gray-700/50 rounded px-1 py-0.5"
+						onclick={() => openPr(pr.number)}
+						onkeydown={(e) => e.key === 'Enter' && openPr(pr.number)}
+						role="button"
+						tabindex="0"
+					>
+						<span class="text-yellow-400 mono">#{pr.number}</span>
 						{#if pr.risk_level}<Badge color="purple">risk:{pr.risk_level}</Badge>{/if}
 						{#if pr.has_conflicts}<Badge color="red">CONFLICT</Badge>{/if}
 						<span class="text-gray-300 flex-1">{pr.title}</span>
@@ -104,8 +165,14 @@
 			<h3 class="text-lg font-semibold text-cyan-400 mb-3">Issues TODO</h3>
 			<ul class="space-y-2">
 				{#each summary.top_issues as issue (issue.number)}
-					<li class="flex items-start gap-2 text-sm">
-						<a href="/issues/{issue.number}" class="text-yellow-400 mono hover:underline">#{issue.number}</a>
+					<li
+						class="flex items-start gap-2 text-sm cursor-pointer hover:bg-gray-700/50 rounded px-1 py-0.5"
+						onclick={() => openIssue(issue.number)}
+						onkeydown={(e) => e.key === 'Enter' && openIssue(issue.number)}
+						role="button"
+						tabindex="0"
+					>
+						<span class="text-yellow-400 mono">#{issue.number}</span>
 						<Badge color={priorityColor(issue.priority)}>{issue.priority ?? '-'}</Badge>
 						{#if issue.category}<span class="text-gray-500 text-xs">{issue.category}</span>{/if}
 						<span class="text-gray-300 flex-1">{issue.title}</span>
@@ -121,8 +188,14 @@
 			<h3 class="text-lg font-semibold text-cyan-400 mb-3">PRs TODO</h3>
 			<ul class="space-y-2">
 				{#each summary.top_prs as pr (pr.number)}
-					<li class="flex items-start gap-2 text-sm">
-						<a href="/prs/{pr.number}" class="text-yellow-400 mono hover:underline">#{pr.number}</a>
+					<li
+						class="flex items-start gap-2 text-sm cursor-pointer hover:bg-gray-700/50 rounded px-1 py-0.5"
+						onclick={() => openPr(pr.number)}
+						onkeydown={(e) => e.key === 'Enter' && openPr(pr.number)}
+						role="button"
+						tabindex="0"
+					>
+						<span class="text-yellow-400 mono">#{pr.number}</span>
 						{#if pr.risk_level}<Badge color="purple">{pr.risk_level}</Badge>{/if}
 						{#if pr.has_conflicts}<Badge color="red">CONFLICT</Badge>{/if}
 						<span class="text-gray-300 flex-1">{pr.title}</span>
@@ -137,3 +210,61 @@
 {:else}
 	<p class="text-gray-500">Loading…</p>
 {/if}
+
+<Modal
+	bind:open={issueModalOpen}
+	size="xl"
+	dismissable
+	class="!max-w-[80vw] w-[80vw] bg-gray-900 border-gray-700"
+	bodyClass="text-gray-200"
+>
+	{#snippet header()}
+		<div class="flex w-full items-center gap-3 pr-2">
+			<span class="mono text-gray-500 text-sm">#{activeIssue?.number ?? ''}</span>
+			<span class="text-base font-semibold text-gray-100 truncate">
+				{activeIssue?.title ?? (issueLoading ? 'Loading…' : '')}
+			</span>
+		</div>
+	{/snippet}
+	{#if issueLoading}
+		<p class="text-gray-500 text-sm">Loading…</p>
+	{:else if issueError}
+		<p class="text-red-400 text-sm">{issueError}</p>
+	{:else if activeIssue}
+		<IssueDetail issue={activeIssue} />
+		<div class="text-right pt-2">
+			<a href="/issues/{activeIssue.number}" class="text-xs text-blue-400 hover:text-blue-300">
+				Open full page →
+			</a>
+		</div>
+	{/if}
+</Modal>
+
+<Modal
+	bind:open={prModalOpen}
+	size="xl"
+	dismissable
+	class="!max-w-[80vw] w-[80vw] bg-gray-900 border-gray-700"
+	bodyClass="text-gray-200"
+>
+	{#snippet header()}
+		<div class="flex w-full items-center gap-3 pr-2">
+			<span class="mono text-gray-500 text-sm">#{activePr?.number ?? ''}</span>
+			<span class="text-base font-semibold text-gray-100 truncate">
+				{activePr?.title ?? (prLoading ? 'Loading…' : '')}
+			</span>
+		</div>
+	{/snippet}
+	{#if prLoading}
+		<p class="text-gray-500 text-sm">Loading…</p>
+	{:else if prError}
+		<p class="text-red-400 text-sm">{prError}</p>
+	{:else if activePr}
+		<PrDetail pr={activePr} />
+		<div class="text-right pt-2">
+			<a href="/prs/{activePr.number}" class="text-xs text-blue-400 hover:text-blue-300">
+				Open full page →
+			</a>
+		</div>
+	{/if}
+</Modal>

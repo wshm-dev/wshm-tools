@@ -20,18 +20,20 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
-    Admin,
-    Member,
     Viewer,
+    Member,
+    Operator,
+    Admin,
 }
 
 impl Role {
     pub fn as_str(&self) -> &'static str {
         match self {
             Role::Admin => "admin",
+            Role::Operator => "operator",
             Role::Member => "member",
             Role::Viewer => "viewer",
         }
@@ -39,10 +41,16 @@ impl Role {
     pub fn from_str(s: &str) -> Result<Self> {
         match s {
             "admin" => Ok(Role::Admin),
+            "operator" => Ok(Role::Operator),
             "member" => Ok(Role::Member),
             "viewer" => Ok(Role::Viewer),
             other => Err(anyhow!("invalid role: {other}")),
         }
+    }
+    /// True if this role can perform actions requiring at least `min`.
+    /// Variants are ordered Viewer < Member < Operator < Admin.
+    pub fn has_at_least(self, min: Role) -> bool {
+        self >= min
     }
 }
 

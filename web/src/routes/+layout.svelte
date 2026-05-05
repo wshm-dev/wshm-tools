@@ -13,7 +13,7 @@
 		type Me,
 		type AuthStatus
 	} from '$lib/api';
-	import { canAccessRoute } from '$lib/permissions';
+	import { canAccessRoute, can } from '$lib/permissions';
 	import {
 		SidebarGroup,
 		SidebarItem,
@@ -170,17 +170,21 @@
 						color="alternative"
 						size="xs"
 						class="flex-1"
-						disabled={syncing}
+						disabled={syncing || !can(me?.role, 'syncIncremental')}
 						onclick={() => runSync(false)}
-						title="Incremental sync (changes since last sync)"
+						title={can(me?.role, 'syncIncremental')
+							? 'Incremental sync (changes since last sync)'
+							: 'Requires member role'}
 					>{syncing ? '…' : 'Sync'}</Button>
 					<Button
 						color="alternative"
 						size="xs"
 						class="flex-1"
-						disabled={syncing}
+						disabled={syncing || !can(me?.role, 'syncFull')}
 						onclick={() => runSync(true)}
-						title="Full re-sync (slower)"
+						title={can(me?.role, 'syncFull')
+							? 'Full re-sync (slower)'
+							: 'Requires operator role'}
 					>Full</Button>
 				</ButtonGroup>
 				{#if syncMsg}

@@ -18,6 +18,7 @@
 		TableBody,
 		TableBodyRow,
 		TableBodyCell,
+		Modal,
 	} from 'flowbite-svelte';
 	import { colorConfig, type ColorConfig } from '$lib/colors';
 	import {
@@ -152,8 +153,85 @@
 	let creatingUser: boolean = $state(false);
 	let userMessage: string | null = $state(null);
 	let userMessageErr: boolean = $state(false);
-	let resetPwId: number | null = $state(null);
-	let resetPwValue: string = $state('');
+
+	// Modal state for Users CRUD
+	let createUserModalOpen: boolean = $state(false);
+	let editUserModalOpen: boolean = $state(false);
+	let deleteUserModalOpen: boolean = $state(false);
+	let editingUser: UserRecord | null = $state(null);
+	let editRole: Role = $state('member');
+	let editPassword: string = $state('');
+	let savingEdit: boolean = $state(false);
+	let deletingUser: UserRecord | null = $state(null);
+	let deletingNow: boolean = $state(false);
+
+	function openCreateUser() {
+		newUserEmail = ''; newUserUsername = ''; newUserPassword = ''; newUserRole = 'member';
+		userMessage = null; userMessageErr = false;
+		createUserModalOpen = true;
+	}
+
+	function openEditUser(u: UserRecord) {
+		editingUser = u;
+		editRole = u.role;
+		editPassword = '';
+		userMessage = null; userMessageErr = false;
+		editUserModalOpen = true;
+	}
+
+	function openDeleteUser(u: UserRecord) {
+		deletingUser = u;
+		deleteUserModalOpen = true;
+	}
+
+	async function handleSaveEdit() {
+		if (!editingUser) return;
+		savingEdit = true;
+		try {
+			const payload: { role?: Role; password?: string } = {};
+			if (editRole !== editingUser.role) payload.role = editRole;
+			if (editPassword) {
+				if (editPassword.length < 6) {
+					userMessage = 'Password must be at least 6 characters';
+					userMessageErr = true;
+					savingEdit = false;
+					return;
+				}
+				payload.password = editPassword;
+			}
+			if (Object.keys(payload).length === 0) {
+				editUserModalOpen = false;
+				savingEdit = false;
+				return;
+			}
+			await updateUser(editingUser.id, payload);
+			userMessage = `Updated ${editingUser.email}.`;
+			userMessageErr = false;
+			editUserModalOpen = false;
+			await refreshUsers();
+		} catch (e) {
+			userMessage = e instanceof Error ? e.message : 'update failed';
+			userMessageErr = true;
+		}
+		savingEdit = false;
+	}
+
+	async function handleConfirmDelete() {
+		if (!deletingUser) return;
+		deletingNow = true;
+		try {
+			await deleteUser(deletingUser.id);
+			userMessage = `Deleted ${deletingUser.email}.`;
+			userMessageErr = false;
+			deleteUserModalOpen = false;
+			deletingUser = null;
+			await refreshUsers();
+		} catch (e) {
+			userMessage = e instanceof Error ? e.message : 'delete failed';
+			userMessageErr = true;
+		}
+		deletingNow = false;
+	}
 
 	async function refreshUsers() {
 		try {
@@ -176,48 +254,13 @@
 				role: newUserRole,
 			});
 			userMessage = `User ${newUserEmail} created.`;
-			newUserEmail = ''; newUserUsername = ''; newUserPassword = ''; newUserRole = 'member';
+			createUserModalOpen = false;
 			await refreshUsers();
 		} catch (e) {
 			userMessage = e instanceof Error ? e.message : 'create failed';
 			userMessageErr = true;
 		}
 		creatingUser = false;
-	}
-
-	async function handleRoleChange(id: number, role: Role) {
-		try {
-			await updateUser(id, { role });
-			await refreshUsers();
-		} catch (e) {
-			usersError = e instanceof Error ? e.message : 'role update failed';
-		}
-	}
-
-	async function handleResetPassword(id: number) {
-		if (!resetPwValue || resetPwValue.length < 6) {
-			usersError = 'Password must be at least 6 characters';
-			return;
-		}
-		try {
-			await updateUser(id, { password: resetPwValue });
-			resetPwId = null;
-			resetPwValue = '';
-			userMessage = 'Password updated.';
-			userMessageErr = false;
-		} catch (e) {
-			usersError = e instanceof Error ? e.message : 'password update failed';
-		}
-	}
-
-	async function handleDeleteUser(id: number, label: string) {
-		if (!confirm(`Delete user ${label}? This cannot be undone.`)) return;
-		try {
-			await deleteUser(id);
-			await refreshUsers();
-		} catch (e) {
-			usersError = e instanceof Error ? e.message : 'delete failed';
-		}
 	}
 
 	function saveColors() { colorConfig.save(colors); }
@@ -723,157 +766,209 @@
 
 	<!-- ========================= USERS (RBAC) ========================= -->
 	<TabItem title="Users">
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-			<!-- Existing users (left, 2/3) -->
-			<Card class="bg-gray-800 border-gray-700 max-w-none lg:col-span-2">
-				<Heading tag="h3" class="text-base mb-4">User accounts</Heading>
-				<Helper class="mb-3">
-					Local accounts and SSO-upserted users. Roles control access to admin
-					pages (Settings) and mutating actions.
-				</Helper>
-				{#if usersError}
-					<Alert color="red" class="text-xs py-2 mb-2">{usersError}</Alert>
-				{/if}
-				{#if userMessage}
-					<Alert color={userMessageErr ? 'red' : 'green'} class="text-xs py-2 mb-2">
-						{userMessage}
-					</Alert>
-				{/if}
-				{#if users.length === 0}
-					<p class="text-sm text-gray-500">No users yet.</p>
-				{:else}
-					<Table hoverable={true} class="text-xs">
-						<TableHead>
-							<TableHeadCell>Identity</TableHeadCell>
-							<TableHeadCell>Auth</TableHeadCell>
-							<TableHeadCell>Role</TableHeadCell>
-							<TableHeadCell>Last login</TableHeadCell>
-							<TableHeadCell><span class="sr-only">Actions</span></TableHeadCell>
-						</TableHead>
-						<TableBody>
-							{#each users as u (u.id)}
-								<TableBodyRow>
-									<TableBodyCell>
-										<div class="mono text-gray-200">{u.email}</div>
-										{#if u.username && u.username !== u.email}
-											<div class="text-[0.65rem] text-gray-500">@{u.username}</div>
-										{/if}
-									</TableBodyCell>
-									<TableBodyCell>
-										<Badge color={u.sso_provider ? 'purple' : 'blue'}>
-											{u.sso_provider ?? 'local'}
-										</Badge>
-									</TableBodyCell>
-									<TableBodyCell>
-										<select
-											class="rounded border border-gray-600 bg-gray-900 px-1.5 py-0.5 text-xs text-gray-200"
-											value={u.role}
-											onchange={(e) => handleRoleChange(u.id, (e.currentTarget as HTMLSelectElement).value as Role)}
-										>
-											<option value="admin">admin</option>
-											<option value="member">member</option>
-											<option value="viewer">viewer</option>
-										</select>
-									</TableBodyCell>
-									<TableBodyCell class="text-gray-500">
-										{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '—'}
-									</TableBodyCell>
-									<TableBodyCell class="text-right whitespace-nowrap">
-										{#if resetPwId === u.id}
-											<Input
-												type="password"
-												bind:value={resetPwValue}
-												size="sm"
-												placeholder="new pw (min 6)"
-												class="!py-0.5 !px-1 inline-block w-32 mr-1"
-											/>
-											<Button color="blue" size="xs" onclick={() => handleResetPassword(u.id)}>
-												Save
-											</Button>
-											<Button color="alternative" size="xs" onclick={() => { resetPwId = null; resetPwValue = ''; }}>
-												Cancel
-											</Button>
-										{:else}
-											<Button color="alternative" size="xs" onclick={() => { resetPwId = u.id; resetPwValue = ''; }}>
-												Reset password
-											</Button>
-											<Button color="red" size="xs" onclick={() => handleDeleteUser(u.id, u.email)}>
-												Delete
-											</Button>
-										{/if}
-									</TableBodyCell>
-								</TableBodyRow>
-							{/each}
-						</TableBody>
-					</Table>
-				{/if}
-			</Card>
-
-			<!-- Create new user (right, 1/3) -->
-			<Card class="bg-gray-800 border-gray-700 max-w-none">
-				<Heading tag="h3" class="text-base mb-4">Create user</Heading>
-				<form onsubmit={(e) => { e.preventDefault(); handleCreateUser(); }} class="space-y-3">
-					<div>
-						<Label for="user-email" class="text-xs mb-1">Email or identifier</Label>
-						<Input
-							id="user-email"
-							type="text"
-							bind:value={newUserEmail}
-							placeholder="alice@example.com or alice"
-							disabled={creatingUser}
-							size="sm"
-						/>
-					</div>
-					<div>
-						<Label for="user-username" class="text-xs mb-1">Username (optional)</Label>
-						<Input
-							id="user-username"
-							type="text"
-							bind:value={newUserUsername}
-							placeholder="alice"
-							disabled={creatingUser}
-							size="sm"
-						/>
-					</div>
-					<div>
-						<Label for="user-password" class="text-xs mb-1">Password</Label>
-						<Input
-							id="user-password"
-							type="password"
-							bind:value={newUserPassword}
-							placeholder="min 6 chars"
-							disabled={creatingUser}
-							size="sm"
-						/>
-					</div>
-					<div>
-						<Label class="text-xs mb-1">Role</Label>
-						<div class="flex flex-col gap-1 text-sm">
-							<Radio bind:group={newUserRole} value="admin">
-								<span class="font-semibold">admin</span>
-								<span class="text-xs text-gray-500 ml-1">— full control</span>
-							</Radio>
-							<Radio bind:group={newUserRole} value="member">
-								<span class="font-semibold">member</span>
-								<span class="text-xs text-gray-500 ml-1">— actions on PRs/issues</span>
-							</Radio>
-							<Radio bind:group={newUserRole} value="viewer">
-								<span class="font-semibold">viewer</span>
-								<span class="text-xs text-gray-500 ml-1">— read-only</span>
-							</Radio>
-						</div>
-					</div>
-					<Button
-						type="submit"
-						color="blue"
-						size="sm"
-						class="w-full"
-						disabled={creatingUser || !newUserEmail.trim() || !newUserPassword || newUserPassword.length < 6}
-					>
-						{creatingUser ? 'Creating…' : 'Create user'}
-					</Button>
-				</form>
-			</Card>
-		</div>
+		<Card class="bg-gray-800 border-gray-700 max-w-none">
+			<div class="flex items-start justify-between mb-4 gap-3">
+				<div>
+					<Heading tag="h3" class="text-base">User accounts</Heading>
+					<Helper class="mt-1">
+						Local accounts and SSO-upserted users. Roles control access to admin
+						pages (Settings) and mutating actions.
+					</Helper>
+				</div>
+				<Button color="blue" size="sm" onclick={openCreateUser} class="shrink-0">
+					+ Add user
+				</Button>
+			</div>
+			{#if usersError}
+				<Alert color="red" class="text-xs py-2 mb-2">{usersError}</Alert>
+			{/if}
+			{#if userMessage}
+				<Alert color={userMessageErr ? 'red' : 'green'} class="text-xs py-2 mb-2">
+					{userMessage}
+				</Alert>
+			{/if}
+			{#if users.length === 0}
+				<p class="text-sm text-gray-500">No users yet. Click "+ Add user" to create one.</p>
+			{:else}
+				<Table hoverable={true} class="text-xs">
+					<TableHead>
+						<TableHeadCell>Identity</TableHeadCell>
+						<TableHeadCell>Auth</TableHeadCell>
+						<TableHeadCell>Role</TableHeadCell>
+						<TableHeadCell>Last login</TableHeadCell>
+						<TableHeadCell><span class="sr-only">Actions</span></TableHeadCell>
+					</TableHead>
+					<TableBody>
+						{#each users as u (u.id)}
+							<TableBodyRow>
+								<TableBodyCell>
+									<div class="mono text-gray-200">{u.email}</div>
+									{#if u.username && u.username !== u.email}
+										<div class="text-[0.65rem] text-gray-500">@{u.username}</div>
+									{/if}
+								</TableBodyCell>
+								<TableBodyCell>
+									<Badge color={u.sso_provider ? 'purple' : 'blue'}>
+										{u.sso_provider ?? 'local'}
+									</Badge>
+								</TableBodyCell>
+								<TableBodyCell>
+									<Badge color={u.role === 'admin' ? 'red' : u.role === 'operator' ? 'orange' : u.role === 'member' ? 'blue' : 'gray'}>
+										{u.role}
+									</Badge>
+								</TableBodyCell>
+								<TableBodyCell class="text-gray-500">
+									{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '—'}
+								</TableBodyCell>
+								<TableBodyCell class="text-right whitespace-nowrap">
+									<Button color="alternative" size="xs" onclick={() => openEditUser(u)}>
+										Edit
+									</Button>
+									<Button color="red" size="xs" onclick={() => openDeleteUser(u)}>
+										Delete
+									</Button>
+								</TableBodyCell>
+							</TableBodyRow>
+						{/each}
+					</TableBody>
+				</Table>
+			{/if}
+		</Card>
 	</TabItem>
 </Tabs>
+
+<!-- Create user modal -->
+<Modal
+	bind:open={createUserModalOpen}
+	title="Add user"
+	size="md"
+	dismissable
+	class="bg-gray-900 border-gray-700"
+	bodyClass="text-gray-200"
+>
+	<form onsubmit={(e) => { e.preventDefault(); handleCreateUser(); }} class="space-y-3">
+		<div>
+			<Label for="user-email" class="text-xs mb-1">Email or identifier</Label>
+			<Input id="user-email" type="text" bind:value={newUserEmail}
+				placeholder="alice@example.com or alice" disabled={creatingUser} size="sm" />
+		</div>
+		<div>
+			<Label for="user-username" class="text-xs mb-1">Username (optional)</Label>
+			<Input id="user-username" type="text" bind:value={newUserUsername}
+				placeholder="alice" disabled={creatingUser} size="sm" />
+		</div>
+		<div>
+			<Label for="user-password" class="text-xs mb-1">Password</Label>
+			<Input id="user-password" type="password" bind:value={newUserPassword}
+				placeholder="min 6 chars" disabled={creatingUser} size="sm" />
+		</div>
+		<div>
+			<Label class="text-xs mb-1">Role</Label>
+			<div class="flex flex-col gap-1 text-sm">
+				<Radio bind:group={newUserRole} value="admin">
+					<span class="font-semibold">admin</span>
+					<span class="text-xs text-gray-500 ml-1">— full control (users, license, secrets)</span>
+				</Radio>
+				<Radio bind:group={newUserRole} value="operator">
+					<span class="font-semibold">operator</span>
+					<span class="text-xs text-gray-500 ml-1">— sync, merge, revert, backups</span>
+				</Radio>
+				<Radio bind:group={newUserRole} value="member">
+					<span class="font-semibold">member</span>
+					<span class="text-xs text-gray-500 ml-1">— triage, comments, labels</span>
+				</Radio>
+				<Radio bind:group={newUserRole} value="viewer">
+					<span class="font-semibold">viewer</span>
+					<span class="text-xs text-gray-500 ml-1">— read-only</span>
+				</Radio>
+			</div>
+		</div>
+		<div class="flex gap-2 pt-2">
+			<Button color="alternative" size="sm" class="flex-1"
+				onclick={() => createUserModalOpen = false} disabled={creatingUser}>
+				Cancel
+			</Button>
+			<Button type="submit" color="blue" size="sm" class="flex-1"
+				disabled={creatingUser || !newUserEmail.trim() || !newUserPassword || newUserPassword.length < 6}>
+				{creatingUser ? 'Creating…' : 'Create'}
+			</Button>
+		</div>
+	</form>
+</Modal>
+
+<!-- Edit user modal -->
+<Modal
+	bind:open={editUserModalOpen}
+	title={editingUser ? `Edit ${editingUser.email}` : 'Edit user'}
+	size="md"
+	dismissable
+	class="bg-gray-900 border-gray-700"
+	bodyClass="text-gray-200"
+>
+	{#if editingUser}
+		<form onsubmit={(e) => { e.preventDefault(); handleSaveEdit(); }} class="space-y-3">
+			<div>
+				<Label class="text-xs mb-1">Role</Label>
+				<div class="flex flex-col gap-1 text-sm">
+					<Radio bind:group={editRole} value="admin">
+						<span class="font-semibold">admin</span>
+						<span class="text-xs text-gray-500 ml-1">— full control</span>
+					</Radio>
+					<Radio bind:group={editRole} value="operator">
+						<span class="font-semibold">operator</span>
+						<span class="text-xs text-gray-500 ml-1">— sync, merge, revert, backups</span>
+					</Radio>
+					<Radio bind:group={editRole} value="member">
+						<span class="font-semibold">member</span>
+						<span class="text-xs text-gray-500 ml-1">— triage, comments, labels</span>
+					</Radio>
+					<Radio bind:group={editRole} value="viewer">
+						<span class="font-semibold">viewer</span>
+						<span class="text-xs text-gray-500 ml-1">— read-only</span>
+					</Radio>
+				</div>
+			</div>
+			<div>
+				<Label for="edit-pw" class="text-xs mb-1">New password (leave empty to keep current)</Label>
+				<Input id="edit-pw" type="password" bind:value={editPassword}
+					placeholder="min 6 chars" disabled={savingEdit} size="sm" />
+			</div>
+			<div class="flex gap-2 pt-2">
+				<Button color="alternative" size="sm" class="flex-1"
+					onclick={() => editUserModalOpen = false} disabled={savingEdit}>
+					Cancel
+				</Button>
+				<Button type="submit" color="blue" size="sm" class="flex-1" disabled={savingEdit}>
+					{savingEdit ? 'Saving…' : 'Save'}
+				</Button>
+			</div>
+		</form>
+	{/if}
+</Modal>
+
+<!-- Delete user confirm modal -->
+<Modal
+	bind:open={deleteUserModalOpen}
+	title="Delete user"
+	size="sm"
+	dismissable
+	class="bg-gray-900 border-gray-700"
+	bodyClass="text-gray-200"
+>
+	{#if deletingUser}
+		<p class="text-sm">
+			Delete <span class="mono text-red-300">{deletingUser.email}</span>?
+			This cannot be undone.
+		</p>
+		<div class="flex gap-2 pt-4">
+			<Button color="alternative" size="sm" class="flex-1"
+				onclick={() => deleteUserModalOpen = false} disabled={deletingNow}>
+				Cancel
+			</Button>
+			<Button color="red" size="sm" class="flex-1"
+				onclick={handleConfirmDelete} disabled={deletingNow}>
+				{deletingNow ? 'Deleting…' : 'Delete'}
+			</Button>
+		</div>
+	{/if}
+</Modal>
