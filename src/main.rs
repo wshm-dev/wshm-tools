@@ -10,8 +10,10 @@ async fn main() -> Result<()> {
         .install_default()
         .ok();
     let log_buffer = wshm_core::daemon::log_buffer::install_global();
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,wshm_core=debug"));
     tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env())
+        .with(env_filter)
         .with(tracing_subscriber::fmt::layer())
         .with(wshm_core::daemon::log_buffer::LogLayer::new(log_buffer))
         .init();

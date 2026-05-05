@@ -332,6 +332,24 @@ pub async fn run_multi_with_extensions(
         extensions.logs = log_buffer::global();
     }
 
+    // Open a default UserStore on ~/.wshm/users.db when the caller didn't
+    // provide one, so OSS gets a working RBAC + login flow out of the box.
+    // The Pro binary still passes its own (possibly Postgres-backed) store
+    // and that takes precedence.
+    if extensions.users.is_none() {
+        let users_db = dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".wshm")
+            .join("users.db");
+        match crate::auth::UserStore::open(&users_db) {
+            Ok(store) => extensions.users = Some(Arc::new(store)),
+            Err(e) => warn!(
+                "Failed to open users db at {}: {e} — login disabled",
+                users_db.display()
+            ),
+        }
+    }
+
     // Install the secret store globally so non-async helpers like
     // Config::github_token can resolve from the encrypted store before
     // falling back to env vars.
