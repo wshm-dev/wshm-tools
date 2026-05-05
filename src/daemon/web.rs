@@ -568,11 +568,22 @@ async fn api_auth_me(
 fn require_admin(
     user: &axum::Extension<Option<crate::auth::User>>,
 ) -> Result<crate::auth::User, Response> {
+    require_min_role(user, crate::auth::Role::Admin)
+}
+
+/// Generic role gate. Returns the User when its role is at least `min`,
+/// otherwise a 401/403 response. Routes that don't require any specific
+/// minimum still go through the auth middleware so we always have an
+/// authenticated user when this helper is called.
+fn require_min_role(
+    user: &axum::Extension<Option<crate::auth::User>>,
+    min: crate::auth::Role,
+) -> Result<crate::auth::User, Response> {
     match &user.0 {
-        Some(u) if u.role == crate::auth::Role::Admin => Ok(u.clone()),
+        Some(u) if u.role.has_at_least(min) => Ok(u.clone()),
         Some(_) => Err((
             StatusCode::FORBIDDEN,
-            Json(json!({"error": "admin role required"})),
+            Json(json!({"error": format!("{} role or higher required", min.as_str())})),
         )
             .into_response()),
         None => Err((
@@ -1413,8 +1424,16 @@ async fn api_list_backups() -> impl IntoResponse {
     Json(json!({ "backups": backups }))
 }
 
-/// POST /api/v1/backup -- create a backup.
-async fn api_create_backup() -> impl IntoResponse {
+/// POST /api/v1/backup -- create a backup. Requires `operator` role.
+async fn api_create_backup(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_min_role(&user, crate::auth::Role::Operator) {
+            return e;
+        }
+    }
     let args = crate::cli::BackupArgs {
         output: None,
         include_logs: false,
@@ -1431,19 +1450,33 @@ async fn api_create_backup() -> impl IntoResponse {
 
 /// POST /api/v1/sync/incremental?repo=slug -- run incremental GitHub sync
 /// for a single repo, or all configured repos when `repo` is omitted.
+/// Requires `member` role or higher.
 async fn api_sync_incremental(
     State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
     Query(filter): Query<RepoFilter>,
 ) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_min_role(&user, crate::auth::Role::Member) {
+            return e;
+        }
+    }
     run_sync(&state, filter.repo.as_deref(), false).await
 }
 
 /// POST /api/v1/sync/full?repo=slug -- run full GitHub sync. Same scoping
-/// rule as the incremental variant.
+/// rule as the incremental variant. Requires `operator` role or higher
+/// because a full sync can drain GitHub rate limit.
 async fn api_sync_full(
     State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
     Query(filter): Query<RepoFilter>,
 ) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_min_role(&user, crate::auth::Role::Operator) {
+            return e;
+        }
+    }
     run_sync(&state, filter.repo.as_deref(), true).await
 }
 
@@ -1495,8 +1528,17 @@ async fn run_sync(state: &WebState, repo_filter: Option<&str>, full: bool) -> Re
     .into_response()
 }
 
-/// POST /api/v1/restore -- restore from backup.
-async fn api_restore_backup(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+/// POST /api/v1/restore -- restore from backup. Requires `operator` role.
+async fn api_restore_backup(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_min_role(&user, crate::auth::Role::Operator) {
+            return e;
+        }
+    }
     let path = match body.get("path").and_then(|v| v.as_str()) {
         Some(p) if !p.is_empty() => p.to_string(),
         _ => {
@@ -1579,7 +1621,17 @@ async fn api_license() -> impl IntoResponse {
 }
 
 /// POST /api/v1/license -- activate a license key from the web UI.
-async fn api_license_activate(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+/// Requires `admin` role.
+async fn api_license_activate(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_admin(&user) {
+            return e;
+        }
+    }
     let key = match body.get("license_key").and_then(|v| v.as_str()) {
         Some(k) if !k.trim().is_empty() => k.trim().to_string(),
         _ => {
@@ -1691,10 +1743,17 @@ async fn api_list_repos(State(state): State<Arc<WebState>>) -> impl IntoResponse
 
 /// POST /api/v1/repos -- add a repo at runtime (multi-repo mode only).
 /// Body: {"slug": "owner/repo", "path": "/optional/abs/path"}
+/// Requires `admin` role.
 async fn api_add_repo(
     State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
     Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_admin(&user) {
+            return e;
+        }
+    }
     let slug = match body.get("slug").and_then(|v| v.as_str()) {
         Some(s) if !s.trim().is_empty() => s.trim().to_string(),
         _ => {

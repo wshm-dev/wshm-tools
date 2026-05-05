@@ -813,7 +813,7 @@
 									</Badge>
 								</TableBodyCell>
 								<TableBodyCell>
-									<Badge color={u.role === 'admin' ? 'red' : u.role === 'member' ? 'blue' : 'gray'}>
+									<Badge color={u.role === 'admin' ? 'red' : u.role === 'operator' ? 'orange' : u.role === 'member' ? 'blue' : 'gray'}>
 										{u.role}
 									</Badge>
 								</TableBodyCell>
@@ -867,11 +867,15 @@
 			<div class="flex flex-col gap-1 text-sm">
 				<Radio bind:group={newUserRole} value="admin">
 					<span class="font-semibold">admin</span>
-					<span class="text-xs text-gray-500 ml-1">— full control</span>
+					<span class="text-xs text-gray-500 ml-1">— full control (users, license, secrets)</span>
+				</Radio>
+				<Radio bind:group={newUserRole} value="operator">
+					<span class="font-semibold">operator</span>
+					<span class="text-xs text-gray-500 ml-1">— sync, merge, revert, backups</span>
 				</Radio>
 				<Radio bind:group={newUserRole} value="member">
 					<span class="font-semibold">member</span>
-					<span class="text-xs text-gray-500 ml-1">— actions on PRs/issues</span>
+					<span class="text-xs text-gray-500 ml-1">— triage, comments, labels</span>
 				</Radio>
 				<Radio bind:group={newUserRole} value="viewer">
 					<span class="font-semibold">viewer</span>
@@ -910,9 +914,13 @@
 						<span class="font-semibold">admin</span>
 						<span class="text-xs text-gray-500 ml-1">— full control</span>
 					</Radio>
+					<Radio bind:group={editRole} value="operator">
+						<span class="font-semibold">operator</span>
+						<span class="text-xs text-gray-500 ml-1">— sync, merge, revert, backups</span>
+					</Radio>
 					<Radio bind:group={editRole} value="member">
 						<span class="font-semibold">member</span>
-						<span class="text-xs text-gray-500 ml-1">— actions on PRs/issues</span>
+						<span class="text-xs text-gray-500 ml-1">— triage, comments, labels</span>
 					</Radio>
 					<Radio bind:group={editRole} value="viewer">
 						<span class="font-semibold">viewer</span>
