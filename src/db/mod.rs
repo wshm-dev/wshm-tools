@@ -1,7 +1,6 @@
 pub mod backend;
 pub mod events;
 pub mod issues;
-pub mod postgres;
 pub mod pulls;
 pub mod schema;
 pub mod sync;
@@ -83,10 +82,10 @@ impl Database {
 
 /// Open a database backend based on the config.
 ///
-/// - `"sqlite"` (default): opens the local `.wshm/state.db` SQLite database.
-/// - `"postgresql"`: connects to the configured PostgreSQL instance (requires `database-postgres` feature).
-///
-/// Returns the backend as a boxed trait object for uniform usage.
+/// OSS only ships the SQLite backend. The PostgreSQL backend is provided
+/// by wshm-pro for self-hosted enterprise deployments. Setting
+/// `database.provider = "postgresql"` in OSS is rejected with a clear
+/// error.
 pub fn open_backend(config: &Config) -> Result<Box<dyn DatabaseBackend>> {
     let provider = config
         .database
@@ -95,17 +94,10 @@ pub fn open_backend(config: &Config) -> Result<Box<dyn DatabaseBackend>> {
         .unwrap_or("sqlite");
 
     match provider {
-        #[cfg(feature = "database-postgres")]
-        "postgresql" | "postgres" => {
-            let rt = tokio::runtime::Handle::current();
-            let pg = rt.block_on(postgres::PostgresDb::connect(config))?;
-            Ok(Box::new(pg))
-        }
-        #[cfg(not(feature = "database-postgres"))]
         "postgresql" | "postgres" => {
             anyhow::bail!(
-                "PostgreSQL backend requested but the 'database-postgres' feature is not enabled. \
-                 Rebuild with: cargo build --features database-postgres"
+                "PostgreSQL backend is a wshm-pro feature. \
+                 Use the SQLite backend in OSS, or upgrade to wshm-pro."
             );
         }
         _ => {

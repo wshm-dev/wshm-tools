@@ -24,9 +24,6 @@ pub mod elastic;
 #[cfg(feature = "export-opensearch")]
 pub mod opensearch;
 
-#[cfg(feature = "export-postgres")]
-pub mod postgres;
-
 #[cfg(feature = "export-mongodb")]
 pub mod mongodb;
 
@@ -41,9 +38,6 @@ pub fn build_sink(config: &DatabaseExportConfig) -> Result<Option<Box<dyn Export
 
         #[cfg(feature = "export-opensearch")]
         "opensearch" => Ok(Some(Box::new(opensearch::OpenSearchSink::new(config)?))),
-
-        #[cfg(feature = "export-postgres")]
-        "postgresql" => Ok(Some(Box::new(postgres::PostgresSink::new(config)?))),
 
         #[cfg(feature = "export-mongodb")]
         "mongodb" => Ok(Some(Box::new(mongodb::MongoSink::new(config)?))),

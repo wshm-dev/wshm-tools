@@ -18,14 +18,12 @@ export-azure = ["dep:azure_storage_blobs", "dep:azure_storage"]
 export-gcs = ["dep:google-cloud-storage"]
 
 # Export sinks (databases)
+# Note: PostgreSQL backend and SQLite→Postgres migration are wshm-pro
+# features and intentionally absent from OSS.
 export-elastic = ["dep:elasticsearch"]
 export-opensearch = ["dep:opensearch"]
-export-postgres = ["dep:sqlx"]
 export-mongodb = ["dep:mongodb"]
 export-mysql = ["dep:mysql_async"]
-
-# PostgreSQL as primary database backend (alternative to SQLite)
-database-postgres = ["dep:sqlx"]
 
 # Vault providers
 vault-hashicorp = ["dep:vaultrs"]
@@ -36,7 +34,7 @@ vault-gcp = ["dep:google-cloud-secretmanager-v1"]
 # Convenience bundles
 export-all = [
     "export-s3", "export-azure", "export-gcs",
-    "export-elastic", "export-opensearch", "export-postgres", "export-mongodb",
+    "export-elastic", "export-opensearch", "export-mongodb",
     "export-mysql",
 ]
 vault-all = ["vault-hashicorp", "vault-aws", "vault-azure", "vault-gcp"]
@@ -92,7 +90,6 @@ google-cloud-storage = { version = "1", optional = true }
 # Optional: Export - Databases
 elasticsearch = { version = "9.1.0-alpha.1", optional = true }
 opensearch = { version = "2", optional = true }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono"], optional = true }
 mongodb = { version = "3", optional = true }
 mysql_async = { version = "0.36", optional = true }
 
