@@ -1050,7 +1050,7 @@ pub struct GlobalConfig {
     pub repos: Vec<RepoEntry>,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct GlobalDaemonConfig {
     #[serde(default = "default_daemon_bind")]
     pub bind: String,
@@ -1066,6 +1066,18 @@ pub struct GlobalDaemonConfig {
 
     #[serde(default = "default_poll_interval")]
     pub poll_interval: u64,
+}
+
+impl Default for GlobalDaemonConfig {
+    fn default() -> Self {
+        Self {
+            bind: default_daemon_bind(),
+            webhook_secret: None,
+            apply: false,
+            poll: false,
+            poll_interval: default_poll_interval(),
+        }
+    }
 }
 
 fn default_poll_interval() -> u64 {
