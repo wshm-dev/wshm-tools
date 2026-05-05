@@ -40,8 +40,7 @@ impl Client {
                 .await
                 .context("Failed to read closed pulls response body")?;
 
-            let items: Vec<serde_json::Value> =
-                serde_json::from_str(&body).context("Failed to parse closed pulls JSON")?;
+            let items = super::parse_json_array(&body, "closed pulls")?;
 
             if items.is_empty() {
                 break;
@@ -126,8 +125,7 @@ impl Client {
                 .await
                 .context("Failed to read pulls response body")?;
 
-            let items: Vec<serde_json::Value> =
-                serde_json::from_str(&body).context("Failed to parse pulls JSON")?;
+            let items = super::parse_json_array(&body, "pulls")?;
 
             if items.is_empty() {
                 break;

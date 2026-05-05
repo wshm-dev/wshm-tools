@@ -47,8 +47,7 @@ impl Client {
                 .await
                 .context("Failed to read issues response body")?;
 
-            let items: Vec<serde_json::Value> =
-                serde_json::from_str(&body).context("Failed to parse issues JSON")?;
+            let items = super::parse_json_array(&body, "issues")?;
 
             debug!("Fetched page {page} with {} items", items.len());
 
@@ -172,8 +171,7 @@ impl Client {
                 .await
                 .with_context(|| format!("Failed to read comments response for issue #{number}"))?;
 
-            let comments: Vec<serde_json::Value> =
-                serde_json::from_str(&body).context("Failed to parse comments JSON")?;
+            let comments = super::parse_json_array(&body, "comments")?;
 
             if comments.is_empty() {
                 break;

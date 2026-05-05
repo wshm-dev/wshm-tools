@@ -101,32 +101,7 @@ async fn poll_events(
     let response = state.gh.octocrab._get(&url).await?;
 
     let body = state.gh.octocrab.body_to_string(response).await?;
-    let events: Vec<serde_json::Value> = match serde_json::from_str(&body) {
-        Ok(v) => v,
-        Err(e) => {
-            // GitHub returns an OBJECT (not a sequence) for error cases like
-            // rate limit / 401 / 404. Surface a helpful message instead of
-            // the cryptic "invalid type: map, expected a sequence".
-            if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&body) {
-                if let Some(msg) = obj.get("message").and_then(|v| v.as_str()) {
-                    if msg.to_ascii_lowercase().contains("rate limit") {
-                        anyhow::bail!(
-                            "GitHub rate limit exceeded — anonymous mode (60 req/h). \
-                             Add a github_token in Settings → Secrets for 5000 req/h."
-                        );
-                    }
-                    if msg.to_ascii_lowercase().contains("not found") {
-                        anyhow::bail!(
-                            "GitHub returned 'Not Found' for the events endpoint — \
-                             repo private or token lacks access?"
-                        );
-                    }
-                    anyhow::bail!("GitHub: {msg}");
-                }
-            }
-            return Err(e.into());
-        }
-    };
+    let events = crate::github::parse_json_array(&body, "events")?;
 
     if events.is_empty() {
         return Ok(Vec::new());
