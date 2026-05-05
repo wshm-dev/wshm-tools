@@ -12,6 +12,12 @@
 		Alert,
 		Heading,
 		Radio,
+		Table,
+		TableHead,
+		TableHeadCell,
+		TableBody,
+		TableBodyRow,
+		TableBodyCell,
 	} from 'flowbite-svelte';
 	import { colorConfig, type ColorConfig } from '$lib/colors';
 	import {
@@ -544,43 +550,41 @@
 				{#if secrets.length === 0}
 					<p class="text-sm text-gray-500">No secrets stored. Use the form on the right to add one.</p>
 				{:else}
-					<table class="w-full text-xs">
-						<thead class="text-gray-500 text-left border-b border-gray-700">
-							<tr>
-								<th class="py-1 pr-2">Scope</th>
-								<th class="py-1 pr-2">Key</th>
-								<th class="py-1 pr-2">Value</th>
-								<th class="py-1 pr-2">Updated</th>
-								<th class="py-1"></th>
-							</tr>
-						</thead>
-						<tbody>
+					<Table hoverable={true} class="text-xs">
+						<TableHead>
+							<TableHeadCell>Scope</TableHeadCell>
+							<TableHeadCell>Key</TableHeadCell>
+							<TableHeadCell>Value</TableHeadCell>
+							<TableHeadCell>Updated</TableHeadCell>
+							<TableHeadCell><span class="sr-only">Actions</span></TableHeadCell>
+						</TableHead>
+						<TableBody>
 							{#each secrets as s (s.id)}
-								<tr class="border-b border-gray-700/50">
-									<td class="py-1 pr-2">
+								<TableBodyRow>
+									<TableBodyCell>
 										<Badge color={s.scope === 'global' ? 'blue' : 'green'}>
 											{s.scope}{s.slug ? `: ${s.slug}` : ''}
 										</Badge>
-									</td>
-									<td class="py-1 pr-2 mono text-gray-200">{s.key}</td>
-									<td class="py-1 pr-2 mono text-gray-300">
+									</TableBodyCell>
+									<TableBodyCell class="mono text-gray-200">{s.key}</TableBodyCell>
+									<TableBodyCell class="mono text-gray-300">
 										{revealedId === s.id && revealedValue ? revealedValue : '••••••••'}
-									</td>
-									<td class="py-1 pr-2 text-gray-500">
+									</TableBodyCell>
+									<TableBodyCell class="text-gray-500">
 										{new Date(s.updated_at).toLocaleString()}
-									</td>
-									<td class="py-1 text-right whitespace-nowrap">
+									</TableBodyCell>
+									<TableBodyCell class="text-right whitespace-nowrap">
 										<Button color="alternative" size="xs" onclick={() => handleReveal(s.id)}>
 											{revealedId === s.id ? 'Hide' : 'Reveal'}
 										</Button>
 										<Button color="red" size="xs" onclick={() => handleDeleteSecret(s.id)}>
 											Delete
 										</Button>
-									</td>
-								</tr>
+									</TableBodyCell>
+								</TableBodyRow>
 							{/each}
-						</tbody>
-					</table>
+						</TableBody>
+					</Table>
 				{/if}
 			</Card>
 
@@ -596,14 +600,8 @@
 					<div>
 						<Label class="text-xs mb-1">Scope</Label>
 						<div class="flex gap-3 text-sm">
-							<label class="flex items-center gap-1">
-								<input type="radio" bind:group={newSecretScope} value="global" />
-								Global
-							</label>
-							<label class="flex items-center gap-1">
-								<input type="radio" bind:group={newSecretScope} value="repo" />
-								Per-repo
-							</label>
+							<Radio bind:group={newSecretScope} value="global">Global</Radio>
+							<Radio bind:group={newSecretScope} value="repo">Per-repo</Radio>
 						</div>
 					</div>
 					{#if newSecretScope === 'repo'}

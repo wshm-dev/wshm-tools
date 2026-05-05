@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { selectedRepo } from '$lib/stores';
 	import { fetchRevertPreview, type RevertPreview } from '$lib/api';
+	import { Card, Alert, Heading, P } from 'flowbite-svelte';
 
 	let preview = $state<RevertPreview | null>(null);
 	let error = $state<string | null>(null);
@@ -31,73 +32,65 @@
 </svelte:head>
 
 <div class="mb-6">
-	<h2 class="text-xl font-semibold text-gray-100 mb-1">Revert Actions</h2>
-	<p class="text-sm text-gray-500">Preview and undo all wshm-applied labels, comments, and analyses</p>
+	<Heading tag="h2" class="text-xl mb-1">Revert Actions</Heading>
+	<P class="text-sm text-gray-500">Preview and undo all wshm-applied labels, comments, and analyses</P>
 </div>
 
 {#if error}
-	<div class="rounded-lg border border-red-500 bg-gray-800 p-5">
-		<p class="text-red-400">{error}</p>
-	</div>
+	<Alert color="red">{error}</Alert>
 {:else if preview}
-	<!-- Warning banner -->
-	<div class="rounded-lg border border-yellow-700 bg-yellow-900/20 p-5 mb-6">
-		<div class="flex items-start gap-3">
-			<span class="text-xl">&#9888;&#65039;</span>
-			<div>
-				<h3 class="text-sm font-semibold text-yellow-300 mb-1">Destructive Operation</h3>
-				<p class="text-xs text-yellow-200/70">
-					Reverting will remove all wshm comments, labels, triage results, and PR analyses from GitHub.
-					This cannot be undone. Use <code class="bg-yellow-900/50 px-1.5 py-0.5 rounded">wshm revert --apply</code> from the CLI to execute.
-				</p>
-			</div>
-		</div>
-	</div>
+	<Alert color="yellow" class="mb-6">
+		<Heading tag="h3" class="text-sm font-semibold mb-1">Destructive Operation</Heading>
+		<P class="text-xs">
+			Reverting will remove all wshm comments, labels, triage results, and PR analyses from GitHub.
+			This cannot be undone. Use <code class="bg-yellow-900/50 px-1.5 py-0.5 rounded">wshm revert --apply</code> from the CLI to execute.
+		</P>
+	</Alert>
 
 	{#if totalActions === 0}
-		<div class="rounded-lg border border-green-800 bg-gray-800 p-10 text-center">
+		<Card class="bg-gray-800 border-green-800 max-w-none text-center p-10">
 			<div class="text-2xl mb-2">&#9989;</div>
-			<p class="text-green-400 font-semibold">Nothing to revert</p>
-			<p class="text-xs text-gray-500 mt-1">No wshm actions found in the database</p>
-		</div>
+			<P class="text-green-400 font-semibold">Nothing to revert</P>
+			<P class="text-xs text-gray-500 mt-1">No wshm actions found in the database</P>
+		</Card>
 	{:else}
 		<div class="space-y-4">
 			{#each preview.repos as repo}
-				<div class="rounded-lg border border-gray-700 bg-gray-800 p-6">
-					<h3 class="text-sm font-semibold text-gray-100 mb-4">{repo.repo}</h3>
+				<Card class="bg-gray-800 border-gray-700 max-w-none">
+					<Heading tag="h3" class="text-sm font-semibold mb-4">{repo.repo}</Heading>
 
 					<div class="grid grid-cols-3 gap-4">
-						<div class="rounded-lg bg-gray-900 p-4 text-center">
+						<Card class="bg-gray-900 border-gray-700 max-w-none text-center !p-4">
 							<div class="text-2xl font-bold text-orange-400">{repo.triage_results}</div>
 							<div class="text-xs text-gray-500 mt-1">Triage Results</div>
 							<div class="text-[0.625rem] text-gray-600">Comments + classifications</div>
-						</div>
-						<div class="rounded-lg bg-gray-900 p-4 text-center">
+						</Card>
+						<Card class="bg-gray-900 border-gray-700 max-w-none text-center !p-4">
 							<div class="text-2xl font-bold text-orange-400">{repo.pr_analyses}</div>
 							<div class="text-xs text-gray-500 mt-1">PR Analyses</div>
 							<div class="text-[0.625rem] text-gray-600">Risk + type + summary</div>
-						</div>
-						<div class="rounded-lg bg-gray-900 p-4 text-center">
+						</Card>
+						<Card class="bg-gray-900 border-gray-700 max-w-none text-center !p-4">
 							<div class="text-2xl font-bold text-orange-400">{repo.labels_to_remove}</div>
 							<div class="text-xs text-gray-500 mt-1">Labels</div>
 							<div class="text-[0.625rem] text-gray-600">wshm-applied labels</div>
-						</div>
+						</Card>
 					</div>
-				</div>
+				</Card>
 			{/each}
 		</div>
 
-		<div class="mt-6 rounded-lg border border-gray-700 bg-gray-800 p-5">
-			<p class="text-sm text-gray-400 mb-2">
+		<Card class="mt-6 bg-gray-800 border-gray-700 max-w-none">
+			<P class="text-sm text-gray-400 mb-2">
 				To revert all actions, run from the CLI:
-			</p>
+			</P>
 			<code class="block bg-gray-900 px-4 py-3 rounded text-xs text-gray-300 font-mono">
 				wshm revert --apply
 			</code>
-			<p class="text-xs text-gray-500 mt-3">
+			<P class="text-xs text-gray-500 mt-3">
 				Dry-run first with <code class="bg-gray-900 px-1.5 py-0.5 rounded">wshm revert</code> (no --apply) to see what would happen.
-			</p>
-		</div>
+			</P>
+		</Card>
 	{/if}
 {:else}
 	<div class="text-center py-10 text-gray-500">Loading...</div>

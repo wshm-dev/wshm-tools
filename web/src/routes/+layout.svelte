@@ -3,18 +3,38 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { selectedRepo, theme, type Theme } from '$lib/stores';
-	import { fetchStatus, fetchMe, fetchAuthStatus, syncIncremental, syncFull, type RepoInfo, type Me, type AuthStatus } from '$lib/api';
+	import {
+		fetchStatus,
+		fetchMe,
+		fetchAuthStatus,
+		syncIncremental,
+		syncFull,
+		type RepoInfo,
+		type Me,
+		type AuthStatus
+	} from '$lib/api';
+	import {
+		Sidebar,
+		SidebarGroup,
+		SidebarItem,
+		Avatar,
+		Alert,
+		Button,
+		Select,
+		ButtonGroup
+	} from 'flowbite-svelte';
 	import '../app.css';
 
 	let { children }: { children: Snippet } = $props();
 	let isLoginRoute = $derived($page.url.pathname === '/login');
+	let activeUrl = $derived($page.url.pathname);
 
 	let repos: RepoInfo[] = $state([]);
 	let collapsed: boolean = $state(false);
 	let currentTheme: Theme = $state('dark');
 	let me: Me | null = $state(null);
 	let authStatus: AuthStatus | null = $state(null);
-	let bannerDismissed: boolean = $state(false);
+	let bannerOpen: boolean = $state(true);
 	theme.subscribe((t) => (currentTheme = t));
 
 	function meLabel(m: Me): string {
@@ -49,32 +69,20 @@
 		{ href: '/settings', label: 'Settings', icon: 'settings' }
 	];
 
-	function handleRepoChange(event: Event) {
-		const value = (event.target as HTMLSelectElement).value;
-		selectedRepo.set(value === '' ? null : value);
-	}
-
 	function toggleCollapse() {
 		collapsed = !collapsed;
 		try { localStorage.setItem('wshm-sidebar-collapsed', String(collapsed)); } catch { /* ignore */ }
 	}
 
 	async function handleLogout() {
-		// Clear the signed `wshm_session` cookie set by /api/v1/auth/login.
-		// For Basic-Auth users, also poison the cached creds so the browser
-		// stops auto-sending them.
 		try {
 			await fetch('/api/v1/auth/logout', { method: 'POST' });
-		} catch {
-			// ignore — middleware will still redirect if cookie is invalid
-		}
+		} catch { /* ignore */ }
 		try {
 			const xhr = new XMLHttpRequest();
 			xhr.open('GET', '/api/v1/status', false, 'logout', 'logout');
 			xhr.send();
-		} catch {
-			// expected when Basic Auth isn't in use
-		}
+		} catch { /* ignore */ }
 		window.location.replace('/login');
 	}
 
@@ -90,17 +98,16 @@
 		} catch { /* ignore */ }
 		try {
 			me = await fetchMe();
-		} catch { /* ignore — public-page calls or unauth states */ }
+		} catch { /* ignore */ }
 		try {
 			authStatus = await fetchAuthStatus();
 		} catch { /* ignore */ }
 		try {
-			bannerDismissed = localStorage.getItem('wshm-anon-banner-dismissed') === 'true';
+			bannerOpen = localStorage.getItem('wshm-anon-banner-dismissed') !== 'true';
 		} catch { /* ignore */ }
 	});
 
-	function dismissBanner() {
-		bannerDismissed = true;
+	function persistBannerDismiss() {
 		try { localStorage.setItem('wshm-anon-banner-dismissed', 'true'); } catch { /* ignore */ }
 	}
 
@@ -121,14 +128,30 @@
 		syncing = false;
 		setTimeout(() => { if (syncMsg) syncMsg = null; }, 4000);
 	}
+
+	let repoOptions = $derived([
+		{ value: '', name: 'All repos' },
+		...repos.map((r) => ({ value: r.slug, name: r.slug }))
+	]);
+	let selectedRepoValue: string = $state('');
+	selectedRepo.subscribe((v) => (selectedRepoValue = v ?? ''));
+	$effect(() => {
+		selectedRepo.set(selectedRepoValue === '' ? null : selectedRepoValue);
+	});
 </script>
 
 {#if isLoginRoute}
 	{@render children()}
 {:else}
 <div class="bg-gray-900 text-gray-200 min-h-screen">
-	<nav
-		class="fixed top-0 left-0 bottom-0 z-40 flex flex-col border-r border-gray-700 bg-gray-800 overflow-y-auto transition-[width] duration-150"
+	<Sidebar
+		{activeUrl}
+		alwaysOpen
+		disableBreakpoints
+		ariaLabel="Main navigation"
+		class="fixed top-0 left-0 bottom-0 z-40 border-r border-gray-700 bg-gray-800 overflow-y-auto transition-[width] duration-150 flex flex-col"
+		classes={{ div: 'flex flex-col h-full' }}
+		divClass=""
 		style="width: {collapsed ? '52px' : '180px'}"
 	>
 		<div class="flex items-center gap-2 px-3 py-3 border-b border-gray-700">
@@ -140,31 +163,30 @@
 
 		{#if !collapsed}
 			<div class="px-3 py-2 border-b border-gray-700 space-y-1.5">
-				<select
-					onchange={handleRepoChange}
-					class="w-full rounded border border-gray-600 bg-gray-900 px-1.5 py-1 text-xs text-gray-300 focus:border-blue-500 focus:outline-none"
-				>
-					<option value="">All repos</option>
-					{#each repos as r}
-						<option value={r.slug}>{r.slug}</option>
-					{/each}
-				</select>
-				<div class="flex gap-1">
-					<button
-						type="button"
+				<Select
+					bind:value={selectedRepoValue}
+					items={repoOptions}
+					size="sm"
+					class="bg-gray-900 border-gray-600 text-gray-300 text-xs"
+				/>
+				<ButtonGroup class="w-full">
+					<Button
+						color="alternative"
+						size="xs"
+						class="flex-1"
+						disabled={syncing}
 						onclick={() => runSync(false)}
-						disabled={syncing}
 						title="Incremental sync (changes since last sync)"
-						class="flex-1 rounded border border-gray-600 bg-gray-900 px-1.5 py-1 text-xs text-gray-300 hover:border-blue-500 hover:text-blue-300 disabled:opacity-40 disabled:cursor-default"
-					>{syncing ? '…' : 'Sync'}</button>
-					<button
-						type="button"
-						onclick={() => runSync(true)}
+					>{syncing ? '…' : 'Sync'}</Button>
+					<Button
+						color="alternative"
+						size="xs"
+						class="flex-1"
 						disabled={syncing}
+						onclick={() => runSync(true)}
 						title="Full re-sync (slower)"
-						class="flex-1 rounded border border-gray-600 bg-gray-900 px-1.5 py-1 text-xs text-gray-300 hover:border-blue-500 hover:text-blue-300 disabled:opacity-40 disabled:cursor-default"
-					>Full</button>
-				</div>
+					>Full</Button>
+				</ButtonGroup>
 				{#if syncMsg}
 					<div class="text-[0.65rem] text-gray-500 truncate" title={syncMsg}>{syncMsg}</div>
 				{/if}
@@ -172,75 +194,84 @@
 		{/if}
 
 		<div class="flex-1 py-1">
-			{#each navItems as item}
-				<a
-					href={item.href}
-					class="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-400 hover:bg-gray-700 hover:text-gray-100 transition-colors {collapsed ? 'justify-center' : ''}"
-					title={item.label}
-				>
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 flex-shrink-0" aria-hidden="true">
-						{#if item.icon === 'dashboard'}
-							<rect x="3" y="3" width="7" height="9" rx="1" />
-							<rect x="14" y="3" width="7" height="5" rx="1" />
-							<rect x="14" y="12" width="7" height="9" rx="1" />
-							<rect x="3" y="16" width="7" height="5" rx="1" />
-						{:else if item.icon === 'summary'}
-							<path d="M3 3v18h18" />
-							<path d="M7 14l4-4 4 4 5-7" />
-						{:else if item.icon === 'issues'}
-							<circle cx="12" cy="12" r="9" />
-							<path d="M12 8v4M12 16h.01" />
-						{:else if item.icon === 'prs'}
-							<circle cx="6" cy="6" r="2" />
-							<circle cx="6" cy="18" r="2" />
-							<circle cx="18" cy="18" r="2" />
-							<path d="M6 8v8" />
-							<path d="M11 6h5a2 2 0 0 1 2 2v8" />
-						{:else if item.icon === 'triage'}
-							<path d="M3 6h18" />
-							<path d="M6 12h12" />
-							<path d="M10 18h4" />
-						{:else if item.icon === 'queue'}
-							<path d="M8 6h13M8 12h13M8 18h13" />
-							<circle cx="3.5" cy="6" r="1.5" />
-							<circle cx="3.5" cy="12" r="1.5" />
-							<circle cx="3.5" cy="18" r="1.5" />
-						{:else if item.icon === 'changelog'}
-							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-							<polyline points="14 2 14 8 20 8" />
-							<path d="M8 13h8M8 17h5" />
-						{:else if item.icon === 'revert'}
-							<path d="M9 14L4 9l5-5" />
-							<path d="M4 9h11a5 5 0 0 1 0 10h-3" />
-						{:else if item.icon === 'backups'}
-							<ellipse cx="12" cy="5" rx="9" ry="3" />
-							<path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5" />
-							<path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6" />
-						{:else if item.icon === 'activity'}
-							<polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-						{:else if item.icon === 'actions'}
-							<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-						{:else if item.icon === 'logs'}
-							<path d="M4 4h16v4H4z" />
-							<path d="M4 12h16v4H4z" />
-							<path d="M4 20h10" />
-						{:else if item.icon === 'settings'}
-							<circle cx="12" cy="12" r="3" />
-							<path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-						{/if}
-					</svg>
-					{#if !collapsed}
-						<span class="truncate">{item.label}</span>
-					{/if}
-				</a>
-			{/each}
+			<SidebarGroup>
+				{#each navItems as item}
+					<SidebarItem
+						href={item.href}
+						label={collapsed ? '' : item.label}
+						spanClass={collapsed ? 'sr-only' : 'ms-3 truncate'}
+						class="text-gray-400 hover:bg-gray-700 hover:text-gray-100 {collapsed ? 'justify-center' : ''}"
+						aClass="flex items-center gap-2.5 px-3 py-2 text-sm rounded-none"
+						activeClass="flex items-center gap-2.5 px-3 py-2 text-sm rounded-none bg-gray-700 text-gray-100"
+						nonActiveClass="flex items-center gap-2.5 px-3 py-2 text-sm rounded-none text-gray-400 hover:bg-gray-700 hover:text-gray-100"
+						title={item.label}
+					>
+						{#snippet icon()}
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4 flex-shrink-0" aria-hidden="true">
+								{#if item.icon === 'dashboard'}
+									<rect x="3" y="3" width="7" height="9" rx="1" />
+									<rect x="14" y="3" width="7" height="5" rx="1" />
+									<rect x="14" y="12" width="7" height="9" rx="1" />
+									<rect x="3" y="16" width="7" height="5" rx="1" />
+								{:else if item.icon === 'summary'}
+									<path d="M3 3v18h18" />
+									<path d="M7 14l4-4 4 4 5-7" />
+								{:else if item.icon === 'issues'}
+									<circle cx="12" cy="12" r="9" />
+									<path d="M12 8v4M12 16h.01" />
+								{:else if item.icon === 'prs'}
+									<circle cx="6" cy="6" r="2" />
+									<circle cx="6" cy="18" r="2" />
+									<circle cx="18" cy="18" r="2" />
+									<path d="M6 8v8" />
+									<path d="M11 6h5a2 2 0 0 1 2 2v8" />
+								{:else if item.icon === 'triage'}
+									<path d="M3 6h18" />
+									<path d="M6 12h12" />
+									<path d="M10 18h4" />
+								{:else if item.icon === 'queue'}
+									<path d="M8 6h13M8 12h13M8 18h13" />
+									<circle cx="3.5" cy="6" r="1.5" />
+									<circle cx="3.5" cy="12" r="1.5" />
+									<circle cx="3.5" cy="18" r="1.5" />
+								{:else if item.icon === 'changelog'}
+									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+									<polyline points="14 2 14 8 20 8" />
+									<path d="M8 13h8M8 17h5" />
+								{:else if item.icon === 'revert'}
+									<path d="M9 14L4 9l5-5" />
+									<path d="M4 9h11a5 5 0 0 1 0 10h-3" />
+								{:else if item.icon === 'backups'}
+									<ellipse cx="12" cy="5" rx="9" ry="3" />
+									<path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5" />
+									<path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6" />
+								{:else if item.icon === 'activity'}
+									<polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+								{:else if item.icon === 'actions'}
+									<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+								{:else if item.icon === 'logs'}
+									<path d="M4 4h16v4H4z" />
+									<path d="M4 12h16v4H4z" />
+									<path d="M4 20h10" />
+								{:else if item.icon === 'settings'}
+									<circle cx="12" cy="12" r="3" />
+									<path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+								{/if}
+							</svg>
+						{/snippet}
+					</SidebarItem>
+				{/each}
+			</SidebarGroup>
 		</div>
 
 		{#if me}
-			<div class="border-t border-gray-700 px-2 py-2 flex items-center gap-2 {collapsed ? 'justify-center' : ''}" title={meLabel(me)}>
-				<div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
+			<div
+				class="border-t border-gray-700 px-2 py-2 flex items-center gap-2 {collapsed ? 'justify-center' : ''}"
+				title={meLabel(me)}
+			>
+				<Avatar size="sm" class="bg-blue-600 text-xs font-semibold text-white">
 					{meInitial(me)}
-				</div>
+				</Avatar>
 				{#if !collapsed}
 					<div class="min-w-0 flex-1">
 						<div class="truncate text-xs text-gray-200">{meLabel(me)}</div>
@@ -251,24 +282,30 @@
 				{/if}
 			</div>
 		{/if}
-		<div class="border-t border-gray-700 px-2 py-2 flex items-center gap-1 {collapsed ? 'flex-col' : 'justify-between'}">
-			<button
+
+		<div
+			class="border-t border-gray-700 px-2 py-2 flex items-center gap-1 {collapsed ? 'flex-col' : 'justify-between'}"
+		>
+			<Button
+				color="alternative"
+				size="xs"
+				class="!p-1.5 border-0 bg-transparent text-gray-400 hover:bg-gray-700 hover:text-gray-100"
 				onclick={handleLogout}
 				title="Sign out"
-				class="rounded p-1.5 text-gray-400 hover:bg-gray-700 hover:text-gray-100 transition-colors"
 				aria-label="Sign out"
 			>
-				<!-- Logout icon (door + arrow) -->
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
 					<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
 					<polyline points="16 17 21 12 16 7" />
 					<line x1="21" y1="12" x2="9" y2="12" />
 				</svg>
-			</button>
-			<button
+			</Button>
+			<Button
+				color="alternative"
+				size="xs"
+				class="!p-1.5 border-0 bg-transparent text-gray-400 hover:bg-gray-700 hover:text-gray-100"
 				onclick={toggleTheme}
 				title={currentTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-				class="rounded p-1.5 text-gray-400 hover:bg-gray-700 hover:text-gray-100 transition-colors"
 				aria-label="Toggle theme"
 			>
 				{#if currentTheme === 'dark'}
@@ -281,46 +318,39 @@
 						<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
 					</svg>
 				{/if}
-			</button>
+			</Button>
 			{#if !collapsed}
 				<span class="text-[0.625rem] text-gray-500 mono">v0.28.3</span>
 			{/if}
-			<button
+			<Button
+				color="alternative"
+				size="xs"
+				class="!p-1.5 border-0 bg-transparent text-gray-400 hover:bg-gray-700 hover:text-gray-100"
 				onclick={toggleCollapse}
 				title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-				class="rounded p-1.5 text-gray-400 hover:bg-gray-700 hover:text-gray-100 transition-colors"
 				aria-label="Toggle sidebar"
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
 					{#if collapsed}<polyline points="9 18 15 12 9 6" />{:else}<polyline points="15 18 9 12 15 6" />{/if}
 				</svg>
-			</button>
+			</Button>
 		</div>
-	</nav>
+	</Sidebar>
 
 	<main class="transition-[margin-left] duration-150 p-3 max-w-none" style="margin-left: {collapsed ? '52px' : '180px'}">
-		{#if authStatus && !authStatus.github && !bannerDismissed}
-			<div class="mb-3 flex items-start justify-between gap-3 rounded-md border border-yellow-700/60 bg-yellow-900/20 px-3 py-2 text-sm">
-				<div class="flex items-start gap-2">
-					<span class="text-yellow-400 text-base leading-tight">!</span>
-					<div>
-						<span class="text-yellow-200 font-semibold">Anonymous GitHub mode.</span>
-						<span class="text-yellow-100/90">
-							Public repos sync read-only with a 60 req/h limit; labels, comments, and auto-fix actions are skipped.
-						</span>
-						<a href="/settings" class="ml-1 text-blue-300 hover:text-blue-200 underline">
-							Add a github_token in Settings → Secrets
-						</a>
-						for full functionality.
-					</div>
-				</div>
-				<button
-					type="button"
-					class="text-yellow-300/70 hover:text-yellow-200 flex-shrink-0"
-					onclick={dismissBanner}
-					title="Dismiss for this browser"
-				>×</button>
-			</div>
+		{#if authStatus && !authStatus.github && bannerOpen}
+			<Alert
+				color="yellow"
+				dismissable
+				bind:alertStatus={bannerOpen}
+				onclose={persistBannerDismiss}
+				class="mb-3 text-sm"
+			>
+				<span class="font-semibold">Anonymous GitHub mode.</span>
+				Public repos sync read-only with a 60 req/h limit; labels, comments, and auto-fix actions are skipped.
+				<a href="/settings" class="ml-1 underline">Add a github_token in Settings → Secrets</a>
+				for full functionality.
+			</Alert>
 		{/if}
 		{@render children()}
 	</main>
