@@ -44,23 +44,26 @@
 </svelte:head>
 
 <div
-	class="min-h-screen flex items-center justify-center relative overflow-hidden bg-gray-950 text-gray-200 px-4 py-12"
+	class="min-h-screen flex items-center justify-center relative overflow-hidden text-gray-900 px-4 py-12"
 >
-	<!-- Background decoration -->
+	<!-- Background decoration: pastel mesh gradient -->
 	<div class="pointer-events-none absolute inset-0 -z-10">
-		<div class="absolute inset-0 bg-gradient-to-br from-gray-950 via-gray-900 to-blue-950"></div>
+		<div class="absolute inset-0 bg-gradient-to-br from-rose-100 via-amber-50 to-sky-100"></div>
 		<div
-			class="absolute top-[-10%] left-[-10%] w-[480px] h-[480px] rounded-full bg-blue-600/25 blur-3xl"
+			class="absolute top-[-10%] left-[-10%] w-[520px] h-[520px] rounded-full bg-rose-300/50 blur-3xl"
 		></div>
 		<div
-			class="absolute bottom-[-15%] right-[-10%] w-[520px] h-[520px] rounded-full bg-purple-600/20 blur-3xl"
+			class="absolute bottom-[-15%] right-[-10%] w-[560px] h-[560px] rounded-full bg-violet-300/40 blur-3xl"
 		></div>
 		<div
-			class="absolute top-1/3 right-1/4 w-[300px] h-[300px] rounded-full bg-sky-500/10 blur-3xl"
+			class="absolute top-1/4 right-1/4 w-[360px] h-[360px] rounded-full bg-sky-300/40 blur-3xl"
 		></div>
 		<div
-			class="absolute inset-0 opacity-[0.04]"
-			style="background-image: radial-gradient(circle, white 1px, transparent 1px); background-size: 28px 28px;"
+			class="absolute bottom-1/4 left-1/3 w-[300px] h-[300px] rounded-full bg-emerald-200/40 blur-3xl"
+		></div>
+		<div
+			class="absolute inset-0 opacity-[0.05] mix-blend-multiply"
+			style="background-image: radial-gradient(circle, #475569 1px, transparent 1px); background-size: 28px 28px;"
 		></div>
 	</div>
 
@@ -73,8 +76,8 @@
 				title={l.label}
 				aria-label={l.label}
 				class="text-2xl leading-none px-1.5 py-1 rounded transition-opacity {currentLocale === l.code
-					? 'opacity-100 ring-1 ring-gray-600'
-					: 'opacity-50 hover:opacity-100'}"
+					? 'opacity-100 ring-1 ring-gray-400 bg-white/40'
+					: 'opacity-60 hover:opacity-100'}"
 			>{l.flag}</button>
 		{/each}
 	</div>
@@ -82,16 +85,16 @@
 	<div class="w-full max-w-sm relative">
 		<div class="flex flex-col items-center mb-8">
 			<img src="/wizard-icon.png" alt="" class="h-14 w-14 mb-3 drop-shadow-lg" />
-			<Heading tag="h1" class="text-2xl font-semibold text-gray-100">
+			<Heading tag="h1" class="text-2xl font-semibold text-gray-900">
 				{translate('login.welcome')}
 			</Heading>
-			<P class="text-sm text-gray-400 mt-1">{translate('login.subtitle')}</P>
+			<P class="text-sm text-gray-600 mt-1">{translate('login.subtitle')}</P>
 		</div>
 
-		<div class="rounded-xl border border-gray-800 bg-gray-900/70 backdrop-blur-md p-6 shadow-2xl">
+		<div class="rounded-xl border border-white/60 bg-white/70 backdrop-blur-md p-6 shadow-xl shadow-gray-900/10">
 			<form onsubmit={handleSubmit} class="space-y-4">
 				<div>
-					<Label for="username" class="block text-xs uppercase tracking-wider text-gray-400 mb-1.5">
+					<Label for="username" class="block text-xs uppercase tracking-wider text-gray-600 mb-1.5">
 						{translate('login.username')}
 					</Label>
 					<Input
@@ -105,7 +108,7 @@
 				</div>
 
 				<div>
-					<Label for="password" class="block text-xs uppercase tracking-wider text-gray-400 mb-1.5">
+					<Label for="password" class="block text-xs uppercase tracking-wider text-gray-600 mb-1.5">
 						{translate('login.password')}
 					</Label>
 					<Input
@@ -127,11 +130,11 @@
 			</form>
 
 			<div class="flex items-center my-6">
-				<div class="flex-1 h-px bg-gray-700"></div>
+				<div class="flex-1 h-px bg-gray-300"></div>
 				<span class="px-3 text-xs uppercase tracking-wider text-gray-500">
 					{translate('common.or')}
 				</span>
-				<div class="flex-1 h-px bg-gray-700"></div>
+				<div class="flex-1 h-px bg-gray-300"></div>
 			</div>
 
 			<Button
@@ -166,7 +169,7 @@
 			</Button>
 		</div>
 
-		<P class="text-center text-xs text-gray-600 mt-8">
+		<P class="text-center text-xs text-gray-700 mt-8">
 			{translate('login.tagline')}
 		</P>
 	</div>
