@@ -1,0 +1,13 @@
+{
+	"login.welcome": "Bienvenue sur wshm",
+	"login.subtitle": "Connectez-vous pour continuer",
+	"login.username": "Identifiant",
+	"login.password": "Mot de passe",
+	"login.usernamePlaceholder": "admin",
+	"login.submit": "Se connecter",
+	"login.signingIn": "Connexion…",
+	"login.failed": "Échec de la connexion",
+	"login.googleButton": "Se connecter avec Google",
+	"login.tagline": "wshm — agent GitHub open-source",
+	"common.or": "ou"
+}
