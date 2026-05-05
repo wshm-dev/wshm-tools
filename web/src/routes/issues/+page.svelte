@@ -5,9 +5,9 @@
 	import { multiSort, toggleSort as toggle, sortArrow, sortIndex, sortArrowClass, type SortColumn } from '$lib/sort';
 	import { applyFilters } from '$lib/filter';
 	import { paginate, totalPages, PAGE_SIZE } from '$lib/paginate';
-	import { goto } from '$app/navigation';
-	import { Card, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input } from 'flowbite-svelte';
+	import { Card, Table, TableHead, TableHeadCell, TableBody, TableBodyRow, TableBodyCell, Badge, Input, Modal } from 'flowbite-svelte';
 	import { colorConfig, prStatusBorder, priorityColor, categoryColor, type ColorConfig } from '$lib/colors';
+	import IssueDetail from '$lib/components/IssueDetail.svelte';
 
 	let colors: ColorConfig = $state(colorConfig.defaults);
 	colorConfig.subscribe(c => colors = c);
@@ -70,6 +70,14 @@
 		const unsub = selectedRepo.subscribe(() => { load(); });
 		return unsub;
 	});
+
+	let modalOpen = $state(false);
+	let activeIssue: Issue | null = $state(null);
+
+	function openIssue(issue: Issue) {
+		activeIssue = issue;
+		modalOpen = true;
+	}
 </script>
 
 <svelte:head>
@@ -123,7 +131,7 @@
 					<TableBodyRow
 						class="cursor-pointer"
 						style="border-left: 3px solid {prStatusBorder(colors, issue.pr_status ?? 'no_pr')}; background-color: {prStatusBorder(colors, issue.pr_status ?? 'no_pr')}18;"
-						onclick={() => goto(`/issues/${issue.number}`)}
+						onclick={() => openIssue(issue)}
 					>
 						<TableBodyCell class="px-2 py-1.5 mono text-gray-200">{issue.number}</TableBodyCell>
 						<TableBodyCell class="px-2 py-1.5 truncate text-gray-200">{issue.title}</TableBodyCell>
@@ -147,6 +155,29 @@
 			</TableBody>
 		</Table>
 	</div>
+	<Modal
+		bind:open={modalOpen}
+		size="xl"
+		dismissable
+		class="bg-gray-900 border-gray-700"
+		bodyClass="text-gray-200"
+	>
+		{#snippet header()}
+			<div class="flex w-full items-center gap-3 pr-2">
+				<span class="mono text-gray-500 text-sm">#{activeIssue?.number}</span>
+				<span class="text-base font-semibold text-gray-100 truncate">{activeIssue?.title}</span>
+			</div>
+		{/snippet}
+		{#if activeIssue}
+			<IssueDetail issue={activeIssue} />
+			<div class="text-right pt-2">
+				<a href="/issues/{activeIssue.number}" class="text-xs text-blue-400 hover:text-blue-300">
+					Open full page →
+				</a>
+			</div>
+		{/if}
+	</Modal>
+
 	{#if pages > 1}
 		<div class="flex items-center justify-between mt-2 text-sm text-gray-400">
 			<span>{sorted.length} results (page {page + 1}/{pages})</span>
