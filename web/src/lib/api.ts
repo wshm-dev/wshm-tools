@@ -362,12 +362,26 @@ export function fetchAuthStatus(): Promise<AuthStatus> {
 	return apiGet<AuthStatus>('/auth/status');
 }
 
-export function setGithubToken(token: string): Promise<{ status: string; message: string }> {
+export function setGithubToken(token: string): Promise<{ status: string; message: string; backend?: string }> {
 	return apiPost('/auth/github', { token });
 }
 
-export function setAnthropicToken(token: string, kind: 'oauth' | 'api_key'): Promise<{ status: string; message: string }> {
+export function setAnthropicToken(token: string, kind: 'oauth' | 'api_key'): Promise<{ status: string; message: string; backend?: string }> {
 	return apiPost('/auth/anthropic', { token, kind });
+}
+
+export async function removeGithubToken(): Promise<{ status: string; removed: boolean; message: string }> {
+	const res = await fetch(`${BASE}/auth/github`, { method: 'DELETE' });
+	const json = await res.json();
+	if (!res.ok) throw new Error((json && (json.error || json.message)) || `HTTP ${res.status}`);
+	return json;
+}
+
+export async function removeAnthropicToken(): Promise<{ status: string; removed: boolean; message: string }> {
+	const res = await fetch(`${BASE}/auth/anthropic`, { method: 'DELETE' });
+	const json = await res.json();
+	if (!res.ok) throw new Error((json && (json.error || json.message)) || `HTTP ${res.status}`);
+	return json;
 }
 
 export type Role = 'admin' | 'operator' | 'member' | 'viewer';

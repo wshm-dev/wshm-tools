@@ -2074,13 +2074,24 @@ async fn api_auth_status(State(state): State<Arc<WebState>>) -> impl IntoRespons
     }))
 }
 
-/// POST /api/v1/auth/github -- store GITHUB_TOKEN in .wshm/credentials,
-/// update the process env, and hot-reload every running GitHub client so
-/// the change takes effect without a daemon restart.
+/// POST /api/v1/auth/github -- save the GitHub token. Prefers the
+/// encrypted secret store (AES-256-GCM, master key from Vault on Pro
+/// K8s); falls back to the plaintext credentials file when no store is
+/// configured (OSS standalone). Hot-reloads every running GhClient.
 async fn api_auth_github(
     State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
+    let admin = if state.users.is_some() {
+        match require_admin(&user) {
+            Ok(u) => Some(u),
+            Err(e) => return e,
+        }
+    } else {
+        None
+    };
+
     let token = match body.get("token").and_then(|v| v.as_str()) {
         Some(t) if !t.trim().is_empty() => t.trim().to_string(),
         _ => {
@@ -2092,34 +2103,124 @@ async fn api_auth_github(
         }
     };
 
-    let mut creds = crate::login::load_credentials();
-    creds.insert("GITHUB_TOKEN".to_string(), token.clone());
-    if let Err(e) = crate::login::save_credentials(&creds) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"status": "error", "message": format!("{e}")})),
-        )
-            .into_response();
-    }
+    // Storage strategy: secret store first (encrypted), file fallback.
+    let backend_label = if let Some(store) = state.secrets.as_ref() {
+        if let Err(e) = store
+            .put(
+                crate::secrets::Scope::Global,
+                None,
+                "github_token",
+                &token,
+                admin.as_ref().map(|u| u.id),
+            )
+            .await
+        {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"status": "error", "message": format!("{e}")})),
+            )
+                .into_response();
+        }
+        // Once persisted in the encrypted store, scrub any legacy
+        // plaintext copy so we don't keep two sources of truth.
+        let mut creds = crate::login::load_credentials();
+        if creds.remove("GITHUB_TOKEN").is_some() {
+            let _ = crate::login::save_credentials(&creds);
+        }
+        "encrypted store"
+    } else {
+        // Fallback: legacy plaintext credentials file.
+        let mut creds = crate::login::load_credentials();
+        creds.insert("GITHUB_TOKEN".to_string(), token.clone());
+        if let Err(e) = crate::login::save_credentials(&creds) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"status": "error", "message": format!("{e}")})),
+            )
+                .into_response();
+        }
+        "credentials file (plaintext)"
+    };
 
-    // Update the process env so any subsequent Client::new() picks up the
-    // new token via the legacy env-var fallback in config.github_token_optional.
+    // Process env so subsequent Client::new() finds the token via the
+    // env-var fallback if the secret store isn't queried.
     std::env::set_var("GITHUB_TOKEN", &token);
 
-    // Hot-reload every running per-repo daemon's GhClient so existing
-    // pollers / scheduler / processor stop being anonymous immediately.
+    // Hot-reload every running per-repo daemon's GhClient.
     reload_github_clients(&state, crate::secrets::Scope::Global, None).await;
 
     Json(json!({
         "status": "ok",
-        "message": "GitHub token saved and applied (no restart needed)",
+        "message": format!("GitHub token saved to {backend_label} and applied (no restart needed)"),
+        "backend": backend_label,
+    }))
+    .into_response()
+}
+
+/// DELETE /api/v1/auth/github -- remove the configured GitHub token from
+/// every storage backend (encrypted store + credentials file + process
+/// env) and reload the GhClients so they revert to anonymous mode.
+async fn api_auth_github_delete(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_admin(&user) {
+            return e;
+        }
+    }
+
+    // Remove from encrypted store.
+    let mut removed_any = false;
+    if let Some(store) = state.secrets.as_ref() {
+        if let Ok(list) = store.list().await {
+            for s in list {
+                if s.scope == "global" && s.slug.is_none() && s.key == "github_token" {
+                    let _ = store.delete(s.id, None).await;
+                    removed_any = true;
+                }
+            }
+        }
+    }
+
+    // Remove from plaintext file.
+    let mut creds = crate::login::load_credentials();
+    if creds.remove("GITHUB_TOKEN").is_some() {
+        let _ = crate::login::save_credentials(&creds);
+        removed_any = true;
+    }
+
+    // Clear from process env.
+    std::env::remove_var("GITHUB_TOKEN");
+
+    // Reload GhClients so they go back to anonymous mode.
+    reload_github_clients(&state, crate::secrets::Scope::Global, None).await;
+
+    Json(json!({
+        "status": "ok",
+        "removed": removed_any,
+        "message": "GitHub token cleared (anonymous mode active)",
     }))
     .into_response()
 }
 
 /// POST /api/v1/auth/anthropic -- store Anthropic OAuth token or API key.
 /// Body: {"token": "...", "kind": "oauth"|"api_key"}
-async fn api_auth_anthropic(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+/// Same encrypted-store-first / file-fallback strategy as api_auth_github.
+async fn api_auth_anthropic(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let admin = if state.users.is_some() {
+        match require_admin(&user) {
+            Ok(u) => Some(u),
+            Err(e) => return e,
+        }
+    } else {
+        None
+    };
+
     let token = match body.get("token").and_then(|v| v.as_str()) {
         Some(t) if !t.trim().is_empty() => t.trim().to_string(),
         _ => {
@@ -2135,9 +2236,19 @@ async fn api_auth_anthropic(Json(body): Json<serde_json::Value>) -> impl IntoRes
         .and_then(|v| v.as_str())
         .unwrap_or("oauth");
 
-    let key = match kind {
-        "oauth" => "ANTHROPIC_OAUTH_TOKEN",
-        "api_key" => "ANTHROPIC_API_KEY",
+    let (env_key, secret_key, other_env, other_secret) = match kind {
+        "oauth" => (
+            "ANTHROPIC_OAUTH_TOKEN",
+            "anthropic_oauth_token",
+            "ANTHROPIC_API_KEY",
+            "anthropic_api_key",
+        ),
+        "api_key" => (
+            "ANTHROPIC_API_KEY",
+            "anthropic_api_key",
+            "ANTHROPIC_OAUTH_TOKEN",
+            "anthropic_oauth_token",
+        ),
         _ => {
             return (
                 StatusCode::BAD_REQUEST,
@@ -2147,30 +2258,112 @@ async fn api_auth_anthropic(Json(body): Json<serde_json::Value>) -> impl IntoRes
         }
     };
 
-    let mut creds = crate::login::load_credentials();
-    // Mutually exclusive: writing one removes the other so we don't
-    // confuse resolve_anthropic_auth's priority.
-    let other = if kind == "oauth" {
-        "ANTHROPIC_API_KEY"
+    let backend_label = if let Some(store) = state.secrets.as_ref() {
+        // Drop the mutually-exclusive other key from the store so
+        // resolve_anthropic_auth's priority isn't confused.
+        if let Ok(list) = store.list().await {
+            for s in list {
+                if s.scope == "global" && s.slug.is_none() && s.key == other_secret {
+                    let _ = store.delete(s.id, None).await;
+                }
+            }
+        }
+        if let Err(e) = store
+            .put(
+                crate::secrets::Scope::Global,
+                None,
+                secret_key,
+                &token,
+                admin.as_ref().map(|u| u.id),
+            )
+            .await
+        {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"status": "error", "message": format!("{e}")})),
+            )
+                .into_response();
+        }
+        // Scrub any plaintext copy.
+        let mut creds = crate::login::load_credentials();
+        let mut scrubbed = false;
+        scrubbed |= creds.remove(env_key).is_some();
+        scrubbed |= creds.remove(other_env).is_some();
+        if scrubbed {
+            let _ = crate::login::save_credentials(&creds);
+        }
+        "encrypted store"
     } else {
-        "ANTHROPIC_OAUTH_TOKEN"
+        let mut creds = crate::login::load_credentials();
+        creds.remove(other_env);
+        creds.insert(env_key.to_string(), token.clone());
+        if let Err(e) = crate::login::save_credentials(&creds) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"status": "error", "message": format!("{e}")})),
+            )
+                .into_response();
+        }
+        "credentials file (plaintext)"
     };
-    creds.remove(other);
-    creds.insert(key.to_string(), token);
 
-    match crate::login::save_credentials(&creds) {
-        Ok(()) => Json(json!({
-            "status": "ok",
-            "kind": kind,
-            "message": format!("{key} saved to .wshm/credentials"),
-        }))
-        .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"status": "error", "message": format!("{e}")})),
-        )
-            .into_response(),
+    std::env::set_var(env_key, &token);
+    std::env::remove_var(other_env);
+
+    Json(json!({
+        "status": "ok",
+        "kind": kind,
+        "backend": backend_label,
+        "message": format!("{env_key} saved to {backend_label}"),
+    }))
+    .into_response()
+}
+
+/// DELETE /api/v1/auth/anthropic -- remove both Anthropic credentials
+/// (OAuth token + API key) from every backend.
+async fn api_auth_anthropic_delete(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_admin(&user) {
+            return e;
+        }
     }
+
+    let mut removed_any = false;
+    if let Some(store) = state.secrets.as_ref() {
+        if let Ok(list) = store.list().await {
+            for s in list {
+                if s.scope == "global"
+                    && s.slug.is_none()
+                    && (s.key == "anthropic_oauth_token" || s.key == "anthropic_api_key")
+                {
+                    let _ = store.delete(s.id, None).await;
+                    removed_any = true;
+                }
+            }
+        }
+    }
+
+    let mut creds = crate::login::load_credentials();
+    let before = creds.len();
+    creds.remove("ANTHROPIC_OAUTH_TOKEN");
+    creds.remove("ANTHROPIC_API_KEY");
+    if creds.len() != before {
+        let _ = crate::login::save_credentials(&creds);
+        removed_any = true;
+    }
+
+    std::env::remove_var("ANTHROPIC_OAUTH_TOKEN");
+    std::env::remove_var("ANTHROPIC_API_KEY");
+
+    Json(json!({
+        "status": "ok",
+        "removed": removed_any,
+        "message": "Anthropic credentials cleared",
+    }))
+    .into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -2537,8 +2730,14 @@ pub fn oss_api_routes() -> Router<Arc<WebState>> {
             get(api_repo_features_get).patch(api_repo_features_patch),
         )
         .route("/api/v1/auth/status", get(api_auth_status))
-        .route("/api/v1/auth/github", post(api_auth_github))
-        .route("/api/v1/auth/anthropic", post(api_auth_anthropic))
+        .route(
+            "/api/v1/auth/github",
+            post(api_auth_github).delete(api_auth_github_delete),
+        )
+        .route(
+            "/api/v1/auth/anthropic",
+            post(api_auth_anthropic).delete(api_auth_anthropic_delete),
+        )
         .route("/api/v1/auth/login", post(api_auth_login))
         .route("/api/v1/auth/logout", post(api_auth_logout))
         .route("/api/v1/auth/me", get(api_auth_me))
