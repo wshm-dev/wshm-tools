@@ -228,6 +228,30 @@
 		return s.split(',').map((x) => x.trim()).filter((x) => x.length > 0);
 	}
 
+	/// Sensible default filter values for repos using GitHub's standard
+	/// label set (bug, duplicate, wontfix, invalid, question, good first
+	/// issue, help wanted, enhancement, documentation). Applied in one
+	/// click via the "Apply GitHub defaults" button in the modal.
+	function applyGithubDefaults() {
+		if (!featuresDraft) return;
+		featuresDraft.filters.skip_authors = [
+			'dependabot[bot]',
+			'renovate[bot]',
+			'github-actions[bot]'
+		];
+		featuresDraft.filters.triage_skip_labels = [
+			'wontfix',
+			'duplicate',
+			'invalid',
+			'question'
+		];
+		featuresDraft.filters.auto_pr_only_labels = ['good first issue', 'help wanted'];
+		featuresDraft.filters.auto_merge_only_authors = ['dependabot[bot]'];
+		featuresDraft.filters.auto_merge_only_labels = ['auto-merge'];
+		featuresDraft.filters.auto_merge_max_loc = 200;
+		featuresDraft.filters.skip_drafts = true;
+	}
+
 	// Repo features (per-repo toggles)
 	let featuresModalOpen: boolean = $state(false);
 	let featuresSlug: string = $state('');
@@ -1111,6 +1135,40 @@
 					Advanced filters
 				</summary>
 				<div class="p-3 space-y-3 text-sm">
+					<!-- One-click defaults aligned with GitHub's standard label set. -->
+					<div class="flex items-start justify-between gap-3 rounded border border-blue-700/40 bg-blue-900/20 p-3">
+						<div class="text-xs">
+							<p class="font-semibold text-blue-300 mb-1">GitHub default labels</p>
+							<p class="text-gray-400">
+								Pre-fill sensible filters for repos using GitHub's standard label set
+								(<code class="text-gray-300">bug</code>,
+								<code class="text-gray-300">wontfix</code>,
+								<code class="text-gray-300">duplicate</code>,
+								<code class="text-gray-300">good first issue</code>, …).
+								Click to apply, then tune below.
+							</p>
+						</div>
+						<Button color="blue" size="xs" onclick={applyGithubDefaults} class="shrink-0">
+							Apply GitHub defaults
+						</Button>
+					</div>
+
+					<details class="rounded border border-gray-700 bg-gray-900/40">
+						<summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-400 hover:text-gray-200">
+							ℹ️ GitHub standard labels — what they mean
+						</summary>
+						<div class="p-3 text-xs space-y-1 text-gray-400">
+							<div><code class="text-red-300">bug</code> — Something isn't working. <em>Triage candidate.</em></div>
+							<div><code class="text-cyan-300">enhancement</code> — New feature or request.</div>
+							<div><code class="text-blue-300">documentation</code> — Doc improvements.</div>
+							<div><code class="text-yellow-300">good first issue</code> — Good for newcomers. <em>Auto-fix candidate.</em></div>
+							<div><code class="text-green-300">help wanted</code> — Extra attention is needed.</div>
+							<div><code class="text-purple-300">question</code> — Further info requested. <em>Skip triage (human judgment).</em></div>
+							<div><code class="text-gray-500">duplicate</code> — Already exists. <em>Skip triage.</em></div>
+							<div><code class="text-gray-500">invalid</code> — Doesn't seem right. <em>Skip triage.</em></div>
+							<div><code class="text-gray-500">wontfix</code> — Will not be worked on. <em>Skip triage.</em></div>
+						</div>
+					</details>
 					<div>
 						<h5 class="text-xs uppercase text-gray-500 font-semibold mb-1">Global</h5>
 						<Label class="text-xs mb-1">Skip authors (comma-separated)</Label>
