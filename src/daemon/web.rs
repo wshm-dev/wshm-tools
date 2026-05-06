@@ -1769,6 +1769,11 @@ async fn api_license() -> impl IntoResponse {
             "Daemon webhook mode",
             is_pro && crate::pro_hooks::has_feature("daemon"),
         ),
+        (
+            "search",
+            "Global full-text search",
+            is_pro && crate::pro_hooks::has_feature("search"),
+        ),
     ];
 
     let features: Vec<serde_json::Value> = pro_features

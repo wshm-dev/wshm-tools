@@ -8,7 +8,7 @@ function repoParams(): Record<string, string> {
 	return repo ? { repo } : {};
 }
 
-async function apiGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+async function apiGet<T>(path: string, params?: Record<string, string | number>): Promise<T> {
 	// `new URL` already splits "/logs?tail=100" into pathname="/logs" and
 	// searchParams="tail=100". We prepend BASE to `url.pathname` (NOT the
 	// raw `path`) so a literal '?' in the original path is not
@@ -18,7 +18,7 @@ async function apiGet<T>(path: string, params?: Record<string, string>): Promise
 	url.pathname = `${BASE}${url.pathname}`;
 	const merged = { ...repoParams(), ...params };
 	for (const [key, value] of Object.entries(merged)) {
-		url.searchParams.set(key, value);
+		url.searchParams.set(key, String(value));
 	}
 	const res = await fetch(url.toString());
 	if (!res.ok) {
@@ -325,6 +325,31 @@ export interface LicenseInfo {
 
 export function fetchLicense(): Promise<LicenseInfo> {
 	return apiGet<LicenseInfo>('/license');
+}
+
+// ---------------------------------------------------------------------------
+// Search (Pro feature, gated by license.features `search`)
+// ---------------------------------------------------------------------------
+
+export interface SearchHit {
+	kind: 'issue' | 'pull' | 'triage' | 'comment';
+	repo: string;
+	number: number;
+	title: string;
+	snippet: string;
+	updated_at: string;
+	rank?: number;
+}
+
+export function searchAll(opts: {
+	q: string;
+	limit?: number;
+	offset?: number;
+}): Promise<Page<SearchHit>> {
+	const params: Record<string, string | number> = { q: opts.q };
+	if (opts.limit !== undefined) params.limit = opts.limit;
+	if (opts.offset !== undefined) params.offset = opts.offset;
+	return apiGet<Page<SearchHit>>('/search', params);
 }
 
 export async function activateLicense(key: string): Promise<{ status: string; plan?: string; message: string }> {
