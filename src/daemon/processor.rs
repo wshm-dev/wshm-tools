@@ -182,6 +182,35 @@ async fn handle_issue(state: &DaemonState, event: &WebhookEvent) -> anyhow::Resu
         return Ok(());
     }
 
+    // Apply per-action filters before consuming AI credits.
+    if let Some(n) = number {
+        if let Ok(Some(issue)) = state.db.get_issue(n) {
+            if features.filters.is_author_skipped(issue.author.as_deref()) {
+                info!(
+                    "[{}] issue #{n} skipped (author '{}' in skip_authors)",
+                    state.config.repo_slug(),
+                    issue.author.as_deref().unwrap_or("?")
+                );
+                return Ok(());
+            }
+            if !features.filters.issue_labels_pass_triage(&issue.labels) {
+                info!(
+                    "[{}] issue #{n} skipped (labels filter)",
+                    state.config.repo_slug()
+                );
+                return Ok(());
+            }
+            if !features.filters.issue_age_ok(&issue.created_at) {
+                info!(
+                    "[{}] issue #{n} skipped (older than {} days)",
+                    state.config.repo_slug(),
+                    features.filters.triage_max_age_days
+                );
+                return Ok(());
+            }
+        }
+    }
+
     // Run triage pipeline. `apply` controls whether wshm posts a triage
     // comment on GitHub; we keep the legacy semantic (state.apply) here
     // because triage_issues already gated the AI run itself.
@@ -269,6 +298,31 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
             state.config.repo_slug()
         );
         return Ok(());
+    }
+
+    // Apply per-action filters.
+    if let Some(n) = number {
+        if let Ok(Some(pr)) = state.db.get_pull(n) {
+            if features.filters.is_author_skipped(pr.author.as_deref()) {
+                info!(
+                    "[{}] PR #{n} skipped (author '{}' in skip_authors)",
+                    state.config.repo_slug(),
+                    pr.author.as_deref().unwrap_or("?")
+                );
+                return Ok(());
+            }
+            if !features.filters.branch_allowed(pr.base_ref.as_deref()) {
+                info!(
+                    "[{}] PR #{n} skipped (base '{}' not in target_branches)",
+                    state.config.repo_slug(),
+                    pr.base_ref.as_deref().unwrap_or("?")
+                );
+                return Ok(());
+            }
+            // skip_drafts not applied here yet — Issue model in DB doesn't
+            // currently expose draft status; left as TODO once the field
+            // is added to PullRequest.
+        }
     }
 
     // Run PR analysis pipeline

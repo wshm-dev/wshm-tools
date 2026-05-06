@@ -1789,20 +1789,29 @@ async fn api_repo_features_patch(
 
     // Merge partial update over current snapshot.
     let mut features = ds.features();
-    macro_rules! patch_field {
+    macro_rules! patch_bool {
         ($field:ident) => {
             if let Some(v) = body.get(stringify!($field)).and_then(|v| v.as_bool()) {
                 features.$field = v;
             }
         };
     }
-    patch_field!(collect_issues);
-    patch_field!(collect_prs);
-    patch_field!(triage_issues);
-    patch_field!(analyze_prs);
-    patch_field!(review_prs);
-    patch_field!(auto_pr);
-    patch_field!(auto_merge);
+    patch_bool!(collect_issues);
+    patch_bool!(collect_prs);
+    patch_bool!(triage_issues);
+    patch_bool!(analyze_prs);
+    patch_bool!(review_prs);
+    patch_bool!(auto_pr);
+    patch_bool!(auto_merge);
+
+    // Filters: full replace if a `filters` object is in the body.
+    if let Some(f_body) = body.get("filters") {
+        if let Ok(parsed) =
+            serde_json::from_value::<crate::config::RepoFilters>(f_body.clone())
+        {
+            features.filters = parsed;
+        }
+    }
 
     // Apply to in-memory state immediately.
     ds.set_features(features.clone());

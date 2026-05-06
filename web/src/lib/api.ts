@@ -372,6 +372,23 @@ export function setAnthropicToken(token: string, kind: 'oauth' | 'api_key'): Pro
 
 export type Role = 'admin' | 'operator' | 'member' | 'viewer';
 
+export interface RepoFilters {
+	skip_authors: string[];
+	target_branches: string[];
+	skip_drafts: boolean;
+	triage_only_labels: string[];
+	triage_skip_labels: string[];
+	triage_max_age_days: number;
+	analyze_min_loc: number;
+	analyze_max_loc: number;
+	auto_pr_only_labels: string[];
+	auto_pr_target_branch: string;
+	auto_merge_only_authors: string[];
+	auto_merge_only_labels: string[];
+	auto_merge_min_approvals: number;
+	auto_merge_max_loc: number;
+}
+
 export interface RepoFeatures {
 	collect_issues: boolean;
 	collect_prs: boolean;
@@ -380,6 +397,7 @@ export interface RepoFeatures {
 	review_prs: boolean;
 	auto_pr: boolean;
 	auto_merge: boolean;
+	filters: RepoFilters;
 }
 
 export async function fetchRepoFeatures(slug: string): Promise<RepoFeatures> {

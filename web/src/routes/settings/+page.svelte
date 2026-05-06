@@ -223,6 +223,11 @@
 		savingEdit = false;
 	}
 
+	// CSV → trimmed array, drops blanks. Used by the filters UI inputs.
+	function parseCsv(s: string): string[] {
+		return s.split(',').map((x) => x.trim()).filter((x) => x.length > 0);
+	}
+
 	// Repo features (per-repo toggles)
 	let featuresModalOpen: boolean = $state(false);
 	let featuresSlug: string = $state('');
@@ -1099,6 +1104,129 @@
 					</label>
 				</div>
 			</div>
+
+			<!-- Advanced filters: collapsible. Free-text comma-separated for arrays. -->
+			<details class="rounded border border-gray-700 bg-gray-900/40">
+				<summary class="cursor-pointer px-3 py-2 text-sm font-semibold text-blue-300 hover:text-blue-200">
+					Advanced filters
+				</summary>
+				<div class="p-3 space-y-3 text-sm">
+					<div>
+						<h5 class="text-xs uppercase text-gray-500 font-semibold mb-1">Global</h5>
+						<Label class="text-xs mb-1">Skip authors (comma-separated)</Label>
+						<Input
+							size="sm"
+							placeholder="dependabot[bot], renovate[bot]"
+							value={featuresDraft.filters.skip_authors.join(', ')}
+							onchange={(e) => {
+								featuresDraft!.filters.skip_authors = parseCsv((e.currentTarget as HTMLInputElement).value);
+							}}
+						/>
+						<Label class="text-xs mb-1 mt-2">Target branches (vide = toutes)</Label>
+						<Input
+							size="sm"
+							placeholder="main, develop"
+							value={featuresDraft.filters.target_branches.join(', ')}
+							onchange={(e) => {
+								featuresDraft!.filters.target_branches = parseCsv((e.currentTarget as HTMLInputElement).value);
+							}}
+						/>
+						<label class="flex items-center gap-2 text-sm mt-2">
+							<input type="checkbox" bind:checked={featuresDraft.filters.skip_drafts} class="rounded" />
+							<span>Skip draft PRs</span>
+						</label>
+					</div>
+
+					<div>
+						<h5 class="text-xs uppercase text-gray-500 font-semibold mb-1">Triage</h5>
+						<Label class="text-xs mb-1">Only labels (whitelist)</Label>
+						<Input
+							size="sm"
+							placeholder="needs-triage, bug"
+							value={featuresDraft.filters.triage_only_labels.join(', ')}
+							onchange={(e) => {
+								featuresDraft!.filters.triage_only_labels = parseCsv((e.currentTarget as HTMLInputElement).value);
+							}}
+						/>
+						<Label class="text-xs mb-1 mt-2">Skip labels</Label>
+						<Input
+							size="sm"
+							placeholder="wontfix, duplicate"
+							value={featuresDraft.filters.triage_skip_labels.join(', ')}
+							onchange={(e) => {
+								featuresDraft!.filters.triage_skip_labels = parseCsv((e.currentTarget as HTMLInputElement).value);
+							}}
+						/>
+						<Label class="text-xs mb-1 mt-2">Max age (days, 0 = no limit)</Label>
+						<Input
+							type="number"
+							size="sm"
+							bind:value={featuresDraft.filters.triage_max_age_days}
+						/>
+					</div>
+
+					<div>
+						<h5 class="text-xs uppercase text-gray-500 font-semibold mb-1">Analyze PRs</h5>
+						<div class="grid grid-cols-2 gap-2">
+							<div>
+								<Label class="text-xs mb-1">Min LOC (0 = no min)</Label>
+								<Input type="number" size="sm" bind:value={featuresDraft.filters.analyze_min_loc} />
+							</div>
+							<div>
+								<Label class="text-xs mb-1">Max LOC (0 = no max)</Label>
+								<Input type="number" size="sm" bind:value={featuresDraft.filters.analyze_max_loc} />
+							</div>
+						</div>
+					</div>
+
+					<div>
+						<h5 class="text-xs uppercase text-gray-500 font-semibold mb-1">Auto-fix PR</h5>
+						<Label class="text-xs mb-1">Only labels (whitelist)</Label>
+						<Input
+							size="sm"
+							placeholder="good-first-issue, auto-fix"
+							value={featuresDraft.filters.auto_pr_only_labels.join(', ')}
+							onchange={(e) => {
+								featuresDraft!.filters.auto_pr_only_labels = parseCsv((e.currentTarget as HTMLInputElement).value);
+							}}
+						/>
+						<Label class="text-xs mb-1 mt-2">Target branch (empty = repo default)</Label>
+						<Input size="sm" placeholder="main" bind:value={featuresDraft.filters.auto_pr_target_branch} />
+					</div>
+
+					<div>
+						<h5 class="text-xs uppercase text-gray-500 font-semibold mb-1">Auto-merge</h5>
+						<Label class="text-xs mb-1">Only authors (whitelist)</Label>
+						<Input
+							size="sm"
+							placeholder="dependabot[bot]"
+							value={featuresDraft.filters.auto_merge_only_authors.join(', ')}
+							onchange={(e) => {
+								featuresDraft!.filters.auto_merge_only_authors = parseCsv((e.currentTarget as HTMLInputElement).value);
+							}}
+						/>
+						<Label class="text-xs mb-1 mt-2">Only labels (whitelist)</Label>
+						<Input
+							size="sm"
+							placeholder="auto-merge"
+							value={featuresDraft.filters.auto_merge_only_labels.join(', ')}
+							onchange={(e) => {
+								featuresDraft!.filters.auto_merge_only_labels = parseCsv((e.currentTarget as HTMLInputElement).value);
+							}}
+						/>
+						<div class="grid grid-cols-2 gap-2 mt-2">
+							<div>
+								<Label class="text-xs mb-1">Min approvals</Label>
+								<Input type="number" size="sm" bind:value={featuresDraft.filters.auto_merge_min_approvals} />
+							</div>
+							<div>
+								<Label class="text-xs mb-1">Max LOC (0 = no max)</Label>
+								<Input type="number" size="sm" bind:value={featuresDraft.filters.auto_merge_max_loc} />
+							</div>
+						</div>
+					</div>
+				</div>
+			</details>
 
 			<div class="flex gap-2 pt-2">
 				<Button color="alternative" size="sm" class="flex-1"

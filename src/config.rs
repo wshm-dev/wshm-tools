@@ -1139,6 +1139,10 @@ pub struct RepoFeatures {
     pub auto_pr: bool,
     #[serde(default)]
     pub auto_merge: bool,
+
+    /// Fine-grained filters applied per action.
+    #[serde(default)]
+    pub filters: RepoFilters,
 }
 
 impl Default for RepoFeatures {
@@ -1151,6 +1155,7 @@ impl Default for RepoFeatures {
             review_prs: false,
             auto_pr: false,
             auto_merge: false,
+            filters: RepoFilters::default(),
         }
     }
 }
@@ -1164,6 +1169,95 @@ impl RepoFeatures {
             self.triage_issues = self.triage_issues || true;
             self.analyze_prs = self.analyze_prs || true;
             self.auto_pr = self.auto_pr || true;
+        }
+    }
+}
+
+/// Per-action filters (whitelist + blacklist combinable). Empty vector
+/// or `0` numeric = no filter on that dimension. All fields default to
+/// permissive — restrict explicitly when narrower behavior is wanted.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RepoFilters {
+    // ── Global (apply to every action) ────────────────────────────
+    #[serde(default)]
+    pub skip_authors: Vec<String>,
+    #[serde(default)]
+    pub target_branches: Vec<String>,
+    #[serde(default)]
+    pub skip_drafts: bool,
+
+    // ── Triage (issues) ───────────────────────────────────────────
+    #[serde(default)]
+    pub triage_only_labels: Vec<String>,
+    #[serde(default)]
+    pub triage_skip_labels: Vec<String>,
+    #[serde(default)]
+    pub triage_max_age_days: u32,
+
+    // ── Analyze PRs ───────────────────────────────────────────────
+    #[serde(default)]
+    pub analyze_min_loc: u32,
+    #[serde(default)]
+    pub analyze_max_loc: u32,
+
+    // ── Auto-fix PR ───────────────────────────────────────────────
+    #[serde(default)]
+    pub auto_pr_only_labels: Vec<String>,
+    #[serde(default)]
+    pub auto_pr_target_branch: String,
+
+    // ── Auto-merge ────────────────────────────────────────────────
+    #[serde(default)]
+    pub auto_merge_only_authors: Vec<String>,
+    #[serde(default)]
+    pub auto_merge_only_labels: Vec<String>,
+    #[serde(default)]
+    pub auto_merge_min_approvals: u32,
+    #[serde(default)]
+    pub auto_merge_max_loc: u32,
+}
+
+impl RepoFilters {
+    pub fn is_author_skipped(&self, author: Option<&str>) -> bool {
+        let a = match author {
+            Some(s) => s,
+            None => return false,
+        };
+        self.skip_authors.iter().any(|x| x == a)
+    }
+
+    pub fn branch_allowed(&self, base_branch: Option<&str>) -> bool {
+        if self.target_branches.is_empty() {
+            return true;
+        }
+        match base_branch {
+            Some(b) => self.target_branches.iter().any(|x| x == b),
+            None => false,
+        }
+    }
+
+    pub fn issue_labels_pass_triage(&self, labels: &[String]) -> bool {
+        if !self.triage_only_labels.is_empty()
+            && !labels.iter().any(|l| self.triage_only_labels.contains(l))
+        {
+            return false;
+        }
+        if labels.iter().any(|l| self.triage_skip_labels.contains(l)) {
+            return false;
+        }
+        true
+    }
+
+    pub fn issue_age_ok(&self, created_at: &str) -> bool {
+        if self.triage_max_age_days == 0 {
+            return true;
+        }
+        match created_at.parse::<chrono::DateTime<chrono::Utc>>() {
+            Ok(dt) => {
+                let age = chrono::Utc::now().signed_duration_since(dt);
+                age.num_days() <= self.triage_max_age_days as i64
+            }
+            Err(_) => true,
         }
     }
 }
