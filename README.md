@@ -12,6 +12,8 @@ Works with GitHub, GitLab, Gitea, and Azure DevOps. Plug in Claude Max, OpenAI, 
 
 **Runs on Linux (x86_64 & ARM64) and Windows (x86_64).**
 
+> 🧪 Built and battle-tested at **[RTK-ai Labs](https://rtk-ai.app)** — born out of the daily backlog pain on [**rtk-ai/rtk**](https://github.com/rtk-ai/rtk) (Rust Token Killer), now used in production by the team to run its own repos.
+
 [![License: SSPL](https://img.shields.io/badge/License-SSPL--1.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 ![Linux](https://img.shields.io/badge/Linux-x64%20%7C%20ARM-yellow?logo=linux)
