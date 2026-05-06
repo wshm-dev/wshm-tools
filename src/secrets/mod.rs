@@ -20,7 +20,7 @@ use std::sync::{Arc, OnceLock};
 mod cipher;
 mod store;
 
-pub use cipher::{aad_for, Cipher, MasterKey};
+pub use cipher::{aad_for, aad_for_legacy, Cipher, MasterKey};
 pub use store::{SecretRecord, SqliteSecretStore};
 
 /// Backend-agnostic interface for the encrypted secret store.

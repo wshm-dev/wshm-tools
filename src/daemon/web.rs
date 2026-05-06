@@ -379,22 +379,33 @@ async fn auth_middleware(
     req.extensions_mut()
         .insert(None as Option<crate::auth::User>);
 
+    // Multi-repo: gather every repo's [web] credential. The previous
+    // code picked an arbitrary repo via `repos.values().next()`, which
+    // made auth non-deterministic when two repos had different
+    // `[web].password` values — the gate behaved as one or the other
+    // depending on HashMap iteration order.
+    //
+    // New behavior: a Basic Auth pair / signed cookie is accepted when
+    // it matches ANY configured repo's [web] block. Empty credential
+    // lists (no [web] anywhere) keep "auth disabled" semantics.
     let repos = state.multi.repos.read().await;
-    let web_cfg = match repos.values().next() {
-        Some(ds) => ds.config.web.clone(),
-        None => {
-            drop(repos);
-            return next.run(req).await;
-        }
-    };
+    let web_cfgs: Vec<(String, String)> = repos
+        .values()
+        .filter_map(|ds| {
+            ds.config
+                .web
+                .password
+                .as_ref()
+                .map(|p| (ds.config.web.username.clone(), p.clone()))
+        })
+        .collect();
     drop(repos);
 
-    // No password configured → auth disabled (single-user dev mode).
-    let required_password = match &web_cfg.password {
-        Some(p) => p.clone(),
-        None => return next.run(req).await,
-    };
-    let expected_username = web_cfg.username.clone();
+    // No password configured anywhere → auth disabled (single-user dev mode).
+    if web_cfgs.is_empty() {
+        return next.run(req).await;
+    }
+    let valid_passwords: Vec<String> = web_cfgs.iter().map(|(_, p)| p.clone()).collect();
 
     // 1) Trust oauth2-proxy headers when explicitly enabled. Looking for
     //    X-Forwarded-User / X-Forwarded-Email / X-Auth-Request-Email which
@@ -415,16 +426,24 @@ async fn auth_middleware(
 
     // 2) Signed session cookie set by /api/v1/auth/login. Skipped in RBAC
     //    mode — there the user-id cookie is the canonical session and was
-    //    already tried above via current_user().
+    //    already tried above via current_user(). The cookie is HMAC-signed
+    //    with one of the configured passwords; accept any match across
+    //    repos (rotation of one repo's password doesn't invalidate the
+    //    other's outstanding sessions).
     if state.users.is_none() {
         if let Some(cookie_val) = read_cookie(req.headers(), "wshm_session") {
-            if verify_session_cookie(&required_password, cookie_val) {
+            if valid_passwords
+                .iter()
+                .any(|p| verify_session_cookie(p, cookie_val))
+            {
                 return next.run(req).await;
             }
         }
     }
 
-    // 3) Basic Auth fallback (CLI / curl).
+    // 3) Basic Auth fallback (CLI / curl). Match against ANY configured
+    //    repo's (username, password) pair so a single CI script can hit
+    //    a multi-repo daemon without picking the "right" repo's creds.
     let basic_ok = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -434,7 +453,7 @@ async fn auth_middleware(
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .map(|decoded| {
             if let Some((user, pass)) = decoded.split_once(':') {
-                user == expected_username && pass == required_password
+                web_cfgs.iter().any(|(u, p)| user == u && pass == p)
             } else {
                 false
             }
