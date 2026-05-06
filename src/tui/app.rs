@@ -1041,6 +1041,7 @@ impl App {
                     apply: None,
                     enabled: true,
                     secret: None,
+                    features: crate::config::RepoFeatures::default(),
                 });
                 let _ = global.save(config_path);
                 self.load_repos();

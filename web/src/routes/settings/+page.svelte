@@ -41,6 +41,9 @@
 		createUser,
 		updateUser,
 		deleteUser,
+		fetchRepoFeatures,
+		updateRepoFeatures,
+		type RepoFeatures,
 		type LicenseInfo,
 		type ReposListResponse,
 		type AuthStatus,
@@ -220,6 +223,44 @@
 		savingEdit = false;
 	}
 
+	// Repo features (per-repo toggles)
+	let featuresModalOpen: boolean = $state(false);
+	let featuresSlug: string = $state('');
+	let featuresDraft: RepoFeatures | null = $state(null);
+	let featuresSaving: boolean = $state(false);
+	let featuresMessage: string | null = $state(null);
+	let featuresMessageErr: boolean = $state(false);
+
+	async function openFeaturesModal(slug: string) {
+		featuresSlug = slug;
+		featuresDraft = null;
+		featuresMessage = null;
+		featuresMessageErr = false;
+		featuresModalOpen = true;
+		try {
+			featuresDraft = await fetchRepoFeatures(slug);
+		} catch (e) {
+			featuresMessage = e instanceof Error ? e.message : 'Failed to load features';
+			featuresMessageErr = true;
+		}
+	}
+
+	async function handleSaveFeatures() {
+		if (!featuresDraft) return;
+		featuresSaving = true;
+		try {
+			await updateRepoFeatures(featuresSlug, featuresDraft);
+			featuresMessage = 'Features saved.';
+			featuresMessageErr = false;
+			featuresModalOpen = false;
+			await refreshRepos();
+		} catch (e) {
+			featuresMessage = e instanceof Error ? e.message : 'save failed';
+			featuresMessageErr = true;
+		}
+		featuresSaving = false;
+	}
+
 	async function handleConfirmDelete() {
 		if (!deletingUser) return;
 		deletingNow = true;
@@ -371,9 +412,14 @@
 						{:else}
 							<ul class="space-y-1 text-xs">
 								{#each reposList.repos as r}
-									<li class="flex items-center justify-between">
+									<li class="flex items-center justify-between gap-2">
 										<span class="text-gray-300 mono">{r.slug}</span>
-										<Badge color={r.apply ? 'green' : 'dark'}>{r.apply ? 'apply' : 'dry-run'}</Badge>
+										<div class="flex items-center gap-2">
+											<Badge color={r.apply ? 'green' : 'dark'}>{r.apply ? 'apply' : 'dry-run'}</Badge>
+											<Button color="alternative" size="xs" onclick={() => openFeaturesModal(r.slug)}>
+												Edit features
+											</Button>
+										</div>
 									</li>
 								{/each}
 							</ul>
@@ -984,6 +1030,87 @@
 				</Button>
 			</div>
 		</form>
+	{/if}
+</Modal>
+
+<!-- Edit features modal -->
+<Modal
+	bind:open={featuresModalOpen}
+	title={featuresSlug ? `Features — ${featuresSlug}` : 'Features'}
+	size="lg"
+	dismissable
+	class="bg-gray-900 border-gray-700"
+	bodyClass="text-gray-200"
+>
+	{#if featuresMessage}
+		<Alert color={featuresMessageErr ? 'red' : 'green'} class="text-xs py-2 mb-3">
+			{featuresMessage}
+		</Alert>
+	{/if}
+	{#if !featuresDraft}
+		<p class="text-sm text-gray-500">Loading…</p>
+	{:else}
+		<div class="space-y-4">
+			<div>
+				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">Read-only collection</h4>
+				<div class="space-y-1.5">
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" bind:checked={featuresDraft.collect_issues} class="rounded" />
+						<span><strong>Collect issues</strong> <span class="text-xs text-gray-500">— sync open + closed issues to local DB</span></span>
+					</label>
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" bind:checked={featuresDraft.collect_prs} class="rounded" />
+						<span><strong>Collect PRs</strong> <span class="text-xs text-gray-500">— sync pull requests + CI status</span></span>
+					</label>
+				</div>
+			</div>
+
+			<div>
+				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">AI classification</h4>
+				<div class="space-y-1.5">
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" bind:checked={featuresDraft.triage_issues} class="rounded" />
+						<span><strong>Triage issues</strong> <span class="text-xs text-gray-500">— AI category/priority + label issues</span></span>
+					</label>
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" bind:checked={featuresDraft.analyze_prs} class="rounded" />
+						<span><strong>Analyze PRs</strong> <span class="text-xs text-gray-500">— AI risk/type/summary + comment</span></span>
+					</label>
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" bind:checked={featuresDraft.review_prs} class="rounded" />
+						<span>
+							<strong>Review PRs (Pro)</strong>
+							<span class="text-xs text-gray-500">— inline code review on PRs</span>
+						</span>
+					</label>
+				</div>
+			</div>
+
+			<div>
+				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">Auto-actions</h4>
+				<div class="space-y-1.5">
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" bind:checked={featuresDraft.auto_pr} class="rounded" />
+						<span><strong>Auto-fix PR</strong> <span class="text-xs text-gray-500">— open PRs for simple bugs</span></span>
+					</label>
+					<label class="flex items-center gap-2 text-sm">
+						<input type="checkbox" bind:checked={featuresDraft.auto_merge} class="rounded" />
+						<span><strong>Auto-merge</strong> <span class="text-xs text-gray-500">— merge ready PRs once checks pass</span></span>
+					</label>
+				</div>
+			</div>
+
+			<div class="flex gap-2 pt-2">
+				<Button color="alternative" size="sm" class="flex-1"
+					onclick={() => featuresModalOpen = false} disabled={featuresSaving}>
+					Cancel
+				</Button>
+				<Button color="blue" size="sm" class="flex-1"
+					onclick={handleSaveFeatures} disabled={featuresSaving}>
+					{featuresSaving ? 'Saving…' : 'Save'}
+				</Button>
+			</div>
+		</div>
 	{/if}
 </Modal>
 

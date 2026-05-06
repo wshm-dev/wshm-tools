@@ -372,6 +372,36 @@ export function setAnthropicToken(token: string, kind: 'oauth' | 'api_key'): Pro
 
 export type Role = 'admin' | 'operator' | 'member' | 'viewer';
 
+export interface RepoFeatures {
+	collect_issues: boolean;
+	collect_prs: boolean;
+	triage_issues: boolean;
+	analyze_prs: boolean;
+	review_prs: boolean;
+	auto_pr: boolean;
+	auto_merge: boolean;
+}
+
+export async function fetchRepoFeatures(slug: string): Promise<RepoFeatures> {
+	return apiGet<RepoFeatures>(`/repos/${encodeURIComponent(slug)}/features`);
+}
+
+export async function updateRepoFeatures(
+	slug: string,
+	patch: Partial<RepoFeatures>
+): Promise<RepoFeatures> {
+	const res = await fetch(`/api/v1/repos/${encodeURIComponent(slug)}/features`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(patch)
+	});
+	if (!res.ok) {
+		const body = await res.json().catch(() => ({}));
+		throw new Error(body.error ?? `HTTP ${res.status}`);
+	}
+	return res.json();
+}
+
 export interface Me {
 	id?: number;
 	email: string | null;

@@ -34,6 +34,10 @@ pub struct DaemonState {
     gh: std::sync::RwLock<Arc<GhClient>>,
     pub config: Arc<Config>,
     pub apply: bool,
+    /// Per-repo feature toggles. Snapshot via [`DaemonState::features`].
+    /// Pipelines must check the relevant flag before performing mutating
+    /// actions (triage, analyze, auto-fix, merge).
+    features: std::sync::RwLock<crate::config::RepoFeatures>,
 }
 
 impl DaemonState {
@@ -43,11 +47,26 @@ impl DaemonState {
         config: Arc<Config>,
         apply: bool,
     ) -> Self {
+        // Legacy `apply: true` upgrades the triage/analyze/auto_pr trio so
+        // existing setups keep behaving the same after this migration.
+        let mut features = crate::config::RepoFeatures::default();
+        features.merge_legacy_apply(apply);
+        Self::with_features(db, gh, config, apply, features)
+    }
+
+    pub fn with_features(
+        db: Arc<Database>,
+        gh: Arc<GhClient>,
+        config: Arc<Config>,
+        apply: bool,
+        features: crate::config::RepoFeatures,
+    ) -> Self {
         Self {
             db,
             gh: std::sync::RwLock::new(gh),
             config,
             apply,
+            features: std::sync::RwLock::new(features),
         }
     }
 
@@ -73,6 +92,23 @@ impl DaemonState {
             if now_authenticated { "authenticated" } else { "anonymous" }
         );
         Ok(())
+    }
+
+    /// Snapshot of the current per-repo feature flags.
+    pub fn features(&self) -> crate::config::RepoFeatures {
+        self.features
+            .read()
+            .expect("features RwLock poisoned")
+            .clone()
+    }
+
+    /// Replace the in-memory feature flags. The API handler is responsible
+    /// for also persisting them to global.toml so they survive restart.
+    pub fn set_features(&self, new: crate::config::RepoFeatures) {
+        *self
+            .features
+            .write()
+            .expect("features RwLock poisoned") = new;
     }
 }
 
@@ -438,7 +474,20 @@ pub async fn run_multi_with_extensions(
         let gh = Arc::new(GhClient::new(&config)?);
         let apply = entry.apply.unwrap_or(global_apply);
 
-        let state = Arc::new(DaemonState::new(db, gh, Arc::new(config), apply));
+        // If features section was present in global.toml, use it; else
+        // derive from the legacy `apply` flag so existing setups stay
+        // backward-compatible.
+        let mut features = entry.features.clone();
+        if features == crate::config::RepoFeatures::default() {
+            features.merge_legacy_apply(apply);
+        }
+        let state = Arc::new(DaemonState::with_features(
+            db,
+            gh,
+            Arc::new(config),
+            apply,
+            features,
+        ));
 
         info!(
             "Loaded repo: {} (path={}, apply={})",

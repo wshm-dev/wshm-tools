@@ -1103,6 +1103,69 @@ pub struct RepoEntry {
     /// Per-repo webhook secret override
     #[serde(default)]
     pub secret: Option<String>,
+
+    /// Per-repo feature toggles. When the section is absent in the TOML,
+    /// `RepoFeatures::default()` is used — read-only collection of issues
+    /// and PRs only. Mutating actions (triage / analyze / auto_pr / merge)
+    /// are opt-in.
+    #[serde(default)]
+    pub features: RepoFeatures,
+}
+
+/// Feature flags controlling what wshm does per repository. Defaults are
+/// conservative: read-only collection enabled, every mutating action
+/// disabled. The legacy `apply: true` flag in `[[repos]]` upgrades the
+/// triage/analyze/auto_pr trio at config-load time so existing setups
+/// keep behaving the same.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RepoFeatures {
+    // Read-only collection
+    #[serde(default = "default_true")]
+    pub collect_issues: bool,
+    #[serde(default = "default_true")]
+    pub collect_prs: bool,
+
+    // AI-assisted classification
+    #[serde(default)]
+    pub triage_issues: bool,
+    #[serde(default)]
+    pub analyze_prs: bool,
+    /// Pro-only inline code review.
+    #[serde(default)]
+    pub review_prs: bool,
+
+    // Mutating actions on the repo
+    #[serde(default)]
+    pub auto_pr: bool,
+    #[serde(default)]
+    pub auto_merge: bool,
+}
+
+impl Default for RepoFeatures {
+    fn default() -> Self {
+        Self {
+            collect_issues: true,
+            collect_prs: true,
+            triage_issues: false,
+            analyze_prs: false,
+            review_prs: false,
+            auto_pr: false,
+            auto_merge: false,
+        }
+    }
+}
+
+impl RepoFeatures {
+    /// Upgrade defaults when the legacy `apply: true` flag is set, so
+    /// existing repos keep behaving the same after this migration. Only
+    /// flips off→on; never overrides explicit user choices.
+    pub fn merge_legacy_apply(&mut self, apply: bool) {
+        if apply {
+            self.triage_issues = self.triage_issues || true;
+            self.analyze_prs = self.analyze_prs || true;
+            self.auto_pr = self.auto_pr || true;
+        }
+    }
 }
 
 fn default_enabled() -> bool {
@@ -1159,6 +1222,7 @@ pub fn append_repo_to_global(
         apply,
         enabled: true,
         secret: None,
+        features: RepoFeatures::default(),
     });
     global.save(path)
 }

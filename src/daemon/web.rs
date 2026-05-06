@@ -1724,7 +1724,7 @@ fn activate_license(key: &str) -> Result<String, String> {
     }
 }
 
-/// GET /api/v1/repos -- list configured repos.
+/// GET /api/v1/repos -- list configured repos with their feature flags.
 async fn api_list_repos(State(state): State<Arc<WebState>>) -> impl IntoResponse {
     let repos = state.multi.repos.read().await;
     let list: Vec<serde_json::Value> = repos
@@ -1734,11 +1734,97 @@ async fn api_list_repos(State(state): State<Arc<WebState>>) -> impl IntoResponse
                 "slug": slug,
                 "apply": ds.apply,
                 "wshm_dir": ds.config.wshm_dir.display().to_string(),
+                "features": ds.features(),
             })
         })
         .collect();
     let dynamic = state.multi.runtime.is_some();
     Json(json!({ "repos": list, "dynamic_add_supported": dynamic }))
+}
+
+/// GET /api/v1/repos/{slug}/features -- read the per-repo feature toggles.
+async fn api_repo_features_get(
+    State(state): State<Arc<WebState>>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> Response {
+    let repos = state.multi.repos.read().await;
+    match repos.get(&slug) {
+        Some(ds) => Json(json!(ds.features())).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("repo '{slug}' not configured")})),
+        )
+            .into_response(),
+    }
+}
+
+/// PATCH /api/v1/repos/{slug}/features -- update the per-repo feature
+/// toggles. Body is a partial RepoFeatures JSON (any subset of fields).
+/// Persists to ~/.wshm/global.toml AND swaps the in-memory state so the
+/// change takes effect on the next pipeline iteration.
+async fn api_repo_features_patch(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_admin(&user) {
+            return e;
+        }
+    }
+
+    let repos = state.multi.repos.read().await;
+    let ds = match repos.get(&slug) {
+        Some(d) => d.clone(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": format!("repo '{slug}' not configured")})),
+            )
+                .into_response();
+        }
+    };
+    drop(repos);
+
+    // Merge partial update over current snapshot.
+    let mut features = ds.features();
+    macro_rules! patch_field {
+        ($field:ident) => {
+            if let Some(v) = body.get(stringify!($field)).and_then(|v| v.as_bool()) {
+                features.$field = v;
+            }
+        };
+    }
+    patch_field!(collect_issues);
+    patch_field!(collect_prs);
+    patch_field!(triage_issues);
+    patch_field!(analyze_prs);
+    patch_field!(review_prs);
+    patch_field!(auto_pr);
+    patch_field!(auto_merge);
+
+    // Apply to in-memory state immediately.
+    ds.set_features(features.clone());
+
+    // Persist to global.toml so the change survives restart. Errors are
+    // logged but not propagated — the in-memory state is already updated,
+    // worst case the user has to re-toggle after a restart.
+    let global_path = crate::config::GlobalConfig::default_path();
+    if global_path.exists() {
+        if let Ok(mut global) = crate::config::GlobalConfig::load(&global_path) {
+            for entry in &mut global.repos {
+                if entry.slug == slug {
+                    entry.features = features.clone();
+                }
+            }
+            if let Err(e) = global.save(&global_path) {
+                tracing::warn!("Failed to persist features to global.toml: {e}");
+            }
+        }
+    }
+
+    Json(json!(features)).into_response()
 }
 
 /// POST /api/v1/repos -- add a repo at runtime (multi-repo mode only).
@@ -2437,6 +2523,10 @@ pub fn oss_api_routes() -> Router<Arc<WebState>> {
         .route("/api/v1/license", get(api_license))
         .route("/api/v1/license/activate", post(api_license_activate))
         .route("/api/v1/repos", get(api_list_repos).post(api_add_repo))
+        .route(
+            "/api/v1/repos/{slug}/features",
+            get(api_repo_features_get).patch(api_repo_features_patch),
+        )
         .route("/api/v1/auth/status", get(api_auth_status))
         .route("/api/v1/auth/github", post(api_auth_github))
         .route("/api/v1/auth/anthropic", post(api_auth_anthropic))
