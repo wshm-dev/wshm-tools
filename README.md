@@ -58,6 +58,53 @@ One binary, self-hosted, your AI keys. Your data stays yours.
 | SaaS tools hold your data hostage | **Self-hosted**, single Rust binary, SQLite or Postgres — your data stays yours |
 | OpenAI subscription fatigue | **Claude Max / Pro / Team** OAuth login — reuse your existing plan |
 
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph forges[" Git forges  "]
+        direction TB
+        gh["GitHub"]
+        gl["GitLab"]
+        gt["Gitea / Forgejo"]
+        az["Azure DevOps"]
+    end
+
+    subgraph daemon[" wshm daemon — single Rust binary  "]
+        direction TB
+        sync["Sync engine<br/>(webhooks + polling)"]
+        pipes["Pipelines<br/>• Triage<br/>• PR analysis<br/>• Merge queue<br/>• PR health<br/>• Auto-fix · Review (Pro)"]
+        store["Storage<br/>SQLite (OSS) / Postgres (Pro)<br/>+ FTS5 search index<br/>+ AES-256-GCM secret vault"]
+    end
+
+    subgraph ai[" AI providers — your keys  "]
+        direction TB
+        claude["Claude Max / Pro / Team<br/>(OAuth, no API key)"]
+        api["Anthropic · OpenAI · Google · Mistral<br/>Groq · DeepSeek · xAI · OpenRouter<br/>Cohere · Together · Fireworks · Perplexity"]
+        local["Ollama / llama.cpp<br/>(local, zero data leaves)"]
+    end
+
+    subgraph clients[" You  "]
+        direction TB
+        web["Web dashboard<br/>(triage, queue, search, settings)"]
+        tui["Terminal UI"]
+        cli["CLI / scripts"]
+    end
+
+    forges -- "issues, PRs,<br/>comments, events" --> sync
+    sync --> pipes
+    pipes -- "classify,<br/>summarise,<br/>review" --> ai
+    ai -- "structured<br/>verdicts" --> pipes
+    pipes -- "labels, comments,<br/>merges, fix PRs" --> forges
+    pipes <--> store
+    store --> web
+    store --> tui
+    store --> cli
+    web -- "actions<br/>(apply / dismiss)" --> pipes
+```
+
+The daemon is the only piece that runs continuously. It syncs your repos, fans events into pipelines, calls whichever AI provider you configured, and persists everything locally — your data never transits a SaaS. The web dashboard, TUI, and CLI all read the same store and trigger the same pipelines.
+
 ## See it in action
 
 ```text
