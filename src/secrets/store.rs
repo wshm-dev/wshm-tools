@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::cipher::{aad_for, Cipher, MasterKey};
+use super::cipher::{aad_for, aad_for_legacy, Cipher, MasterKey};
 use super::{Scope, SecretStore};
 
 /// One row of the secrets table — values are returned masked unless the
@@ -79,8 +79,10 @@ impl SqliteSecretStore {
             .optional()?;
         match row {
             Some((nonce, ciphertext)) => {
-                let aad = aad_for(scope.as_str(), slug, key);
-                let plaintext = cipher.open(&nonce, &ciphertext, &aad)?;
+                let aad_new = aad_for(scope.as_str(), slug, key);
+                let aad_legacy = aad_for_legacy(scope.as_str(), slug, key);
+                let plaintext =
+                    cipher.open_with_aads(&nonce, &ciphertext, &[&aad_new, &aad_legacy])?;
                 let s = String::from_utf8(plaintext)
                     .context("decrypted secret is not valid UTF-8")?;
                 Ok(Some(s))
@@ -181,8 +183,11 @@ impl SecretStore for SqliteSecretStore {
             .optional()?;
         match row {
             Some((scope, slug, key, nonce, ct)) => {
-                let aad = aad_for(&scope, slug.as_deref(), &key);
-                let pt = self.cipher.open(&nonce, &ct, &aad)?;
+                let aad_new = aad_for(&scope, slug.as_deref(), &key);
+                let aad_legacy = aad_for_legacy(&scope, slug.as_deref(), &key);
+                let pt = self
+                    .cipher
+                    .open_with_aads(&nonce, &ct, &[&aad_new, &aad_legacy])?;
                 let s = String::from_utf8(pt).context("not utf-8")?;
                 let _ = conn.execute(
                     "INSERT INTO secrets_audit (scope, slug, key, action, user_id)
