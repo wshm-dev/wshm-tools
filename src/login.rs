@@ -573,8 +573,15 @@ fn show_status() -> Result<()> {
 pub fn inject_credentials() {
     let creds = load_credentials();
     for (key, value) in &creds {
-        // Only set if not already set (env var takes precedence)
-        if std::env::var(key).is_err() {
+        // Inject when the env var is absent OR present-but-empty. The
+        // empty-but-present case happens on K8s when a Deployment
+        // manifest declares `GITHUB_TOKEN=""` to make the variable
+        // visible to the container without setting a real value —
+        // without this fallback, the daemon would see the empty env and
+        // skip the credentials file entirely, booting in anonymous
+        // mode even after the user pasted a token via the web UI.
+        let existing = std::env::var(key).ok();
+        if existing.as_deref().map(str::is_empty).unwrap_or(true) {
             std::env::set_var(key, value);
         }
     }
