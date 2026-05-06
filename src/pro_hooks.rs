@@ -37,6 +37,21 @@ pub fn is_pro() -> bool {
     FEATURE_GATE.get().is_some()
 }
 
+// --- Pro version override ---
+// Pro registers its own CARGO_PKG_VERSION here (e.g. "0.31.1-pro") so
+// `/api/v1/license` can advertise it instead of the wshm-core path-dep
+// version. OSS leaves this unset and falls back to env!("CARGO_PKG_VERSION").
+
+static PRO_VERSION: OnceLock<&'static str> = OnceLock::new();
+
+pub fn set_pro_version(v: &'static str) {
+    let _ = PRO_VERSION.set(v);
+}
+
+pub fn pro_version() -> Option<&'static str> {
+    PRO_VERSION.get().copied()
+}
+
 // --- Cloud sync hook ---
 // Called after telemetry/events to sync with cloud.
 type SyncHookFn = fn(&str, &serde_json::Value);

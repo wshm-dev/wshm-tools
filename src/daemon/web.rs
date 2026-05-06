@@ -1791,6 +1791,12 @@ async fn api_license() -> impl IntoResponse {
             "triage", "pr_analysis", "merge_queue", "notify",
             "web_ui", "daemon_polling", "sqlite", "postgresql"
         ],
+        // Version of the running binary. Pro registers its own
+        // CARGO_PKG_VERSION via `pro_hooks::set_pro_version` at startup
+        // so the SPA can show "0.31.1-pro" rather than the wshm-core
+        // path-dep version.
+        "version": crate::pro_hooks::pro_version()
+            .unwrap_or(env!("CARGO_PKG_VERSION")),
     }))
 }
 

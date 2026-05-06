@@ -349,7 +349,10 @@
 				{/if}
 			</Button>
 			{#if !collapsed}
-				<span class="text-[0.625rem] text-gray-500 mono">v0.28.3</span>
+				<span
+					class="text-[0.625rem] text-gray-500 mono"
+					title={license?.is_pro ? 'wshm-pro' : 'wshm OSS'}
+				>v{license?.version ?? '…'}</span>
 			{/if}
 			<Button
 				color="alternative"

@@ -321,6 +321,10 @@ export interface LicenseInfo {
 	plan: string;
 	features: LicenseFeature[];
 	oss_features: string[];
+	/** Version of the running daemon (CARGO_PKG_VERSION). Set in
+	 *  v0.30.1+; older deploys return undefined and the SPA falls
+	 *  back to a generic label. */
+	version?: string;
 }
 
 export function fetchLicense(): Promise<LicenseInfo> {
