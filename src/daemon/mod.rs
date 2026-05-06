@@ -436,6 +436,30 @@ pub async fn run_multi_with_extensions(
         .install_default()
         .ok();
 
+    // Boot-time security checks: warn loudly when the daemon is running
+    // in a configuration that delegates auth to an upstream proxy
+    // (oauth2-proxy / Cloudflare Access) without a network boundary
+    // protecting it. The trusted-headers shortcut is unauthenticated
+    // by itself; only a NetworkPolicy / firewall makes it safe.
+    let trust_proxy = std::env::var("WSHM_TRUST_PROXY_AUTH")
+        .ok()
+        .filter(|v| v == "1" || v == "true")
+        .is_some();
+    if trust_proxy {
+        let bind_addr = args
+            .bind
+            .clone()
+            .unwrap_or_else(|| global.daemon.bind.clone());
+        if !bind_addr.starts_with("127.") && !bind_addr.starts_with("[::1]") {
+            warn!(
+                "WSHM_TRUST_PROXY_AUTH=1 with a non-loopback bind ({bind_addr}). \
+                 Make sure ONLY your reverse proxy can reach this port — anyone \
+                 else can forge X-Forwarded-Email and bypass auth. On K8s, see \
+                 deploy/k8s/networkpolicy.yaml."
+            );
+        }
+    }
+
     let global_apply = args.apply || global.daemon.apply;
     let bind = args
         .bind

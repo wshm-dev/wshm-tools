@@ -332,13 +332,21 @@ pub async fn seed_admin_if_empty(store: &UserStore) -> Result<()> {
         .create_local(&identifier, username_opt, &password, Role::Admin)
         .await?;
     if generated {
-        tracing::warn!(
-            target: "wshm_core::auth",
+        // The full credential is written to stderr only — it must NOT
+        // land in the in-memory LogBuffer (served by /api/v1/logs and
+        // readable by any authenticated user, including viewers).
+        // Use eprintln! to bypass the tracing layer entirely.
+        eprintln!(
             "===== Seeded initial admin =====\n\
              user:     {identifier}\n\
              password: {password}\n\
              Rotate via Settings → Users (or set WSHM_ADMIN_USER + \
              WSHM_ADMIN_PASSWORD before first boot to pick your own)."
+        );
+        tracing::warn!(
+            target: "wshm_core::auth",
+            "Seeded initial admin user: {identifier} \
+             (password printed to stderr — rotate via Settings → Users)"
         );
     } else {
         tracing::info!("Seeded initial admin user: {identifier}");

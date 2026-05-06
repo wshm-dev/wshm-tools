@@ -1,6 +1,6 @@
 use std::collections::HashSet;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex, Semaphore};
+use std::sync::{Arc, Mutex as StdMutex};
+use tokio::sync::{mpsc, Semaphore};
 use tracing::{error, info, warn};
 
 /// Maximum concurrent event processing tasks.
@@ -15,7 +15,47 @@ use crate::pipelines;
 
 /// Tracks which issue/PR numbers are currently being processed to prevent concurrent duplicates.
 /// Key is (repo_slug, number) for multi-repo isolation, or ("", number) for single-repo.
-type InFlight = Arc<Mutex<HashSet<(String, u64)>>>;
+///
+/// Uses `std::sync::Mutex` so the in-flight key can be released by a
+/// `Drop` guard (RAII) — the previous async-only release path leaked the
+/// key permanently when `process_event` panicked, silently quarantining
+/// the affected issue/PR until daemon restart.
+type InFlight = Arc<StdMutex<HashSet<(String, u64)>>>;
+
+/// Removes its (slug, number) key from the shared in-flight set on drop,
+/// regardless of whether the surrounding future completes normally,
+/// returns Err, or panics. The key is inserted by [`reserve_in_flight`];
+/// constructing the guard outside that helper is a logic error.
+struct InFlightGuard {
+    map: InFlight,
+    key: (String, u64),
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.map.lock() {
+            set.remove(&self.key);
+        }
+    }
+}
+
+/// Try to reserve a (slug, number) slot in the in-flight set. Returns
+/// `Some(guard)` on success — drop it (or let it fall out of scope) to
+/// release the slot — or `None` if another task already holds it.
+fn reserve_in_flight(map: &InFlight, slug: &str, number: u64) -> Option<InFlightGuard> {
+    let key = (slug.to_string(), number);
+    let inserted = match map.lock() {
+        Ok(mut set) => set.insert(key.clone()),
+        Err(_) => return None, // poisoned mutex — fail closed
+    };
+    if !inserted {
+        return None;
+    }
+    Some(InFlightGuard {
+        map: Arc::clone(map),
+        key,
+    })
+}
 
 #[derive(Debug, Clone)]
 pub struct WebhookEvent {
@@ -28,7 +68,7 @@ pub struct WebhookEvent {
 
 pub async fn run(state: Arc<DaemonState>, mut rx: mpsc::Receiver<WebhookEvent>) {
     info!("Event processor started (max {MAX_CONCURRENT_TASKS} concurrent)");
-    let in_flight: InFlight = Arc::new(Mutex::new(HashSet::new()));
+    let in_flight: InFlight = Arc::new(StdMutex::new(HashSet::new()));
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_TASKS));
 
     while let Some(event) = rx.recv().await {
@@ -50,7 +90,7 @@ pub async fn run_multi(
     mut rx: mpsc::Receiver<(String, WebhookEvent)>,
 ) {
     info!("Multi-repo event processor started (max {MAX_CONCURRENT_TASKS} concurrent)");
-    let in_flight: InFlight = Arc::new(Mutex::new(HashSet::new()));
+    let in_flight: InFlight = Arc::new(StdMutex::new(HashSet::new()));
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_TASKS));
 
     while let Some((slug, event)) = rx.recv().await {
@@ -76,7 +116,10 @@ pub async fn run_multi(
     info!("Multi-repo event processor stopped");
 }
 
-/// Guard against concurrent processing of the same (repo, issue/PR number).
+/// Guard against concurrent processing of the same (repo, issue/PR
+/// number). The reservation is RAII so the slot is released even if
+/// `process_event` panics (without a guard the key would leak forever
+/// and the affected issue would be silently quarantined until restart).
 async fn process_guarded(
     state: &DaemonState,
     event: &WebhookEvent,
@@ -84,22 +127,18 @@ async fn process_guarded(
     slug: &str,
 ) {
     if let Some(number) = event.number {
-        let key = (slug.to_string(), number);
-        {
-            let mut set = in_flight.lock().await;
-            if !set.insert(key.clone()) {
+        let _guard = match reserve_in_flight(in_flight, slug, number) {
+            Some(g) => g,
+            None => {
                 warn!(
                     "Skipping event id={} for #{number} (already in-flight)",
                     event.id
                 );
                 return;
             }
-        }
+        };
         process_event(state, event).await;
-        {
-            let mut set = in_flight.lock().await;
-            set.remove(&key);
-        }
+        // _guard drops here, releasing the slot. Drop also fires on panic.
     } else {
         process_event(state, event).await;
     }

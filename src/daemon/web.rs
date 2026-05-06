@@ -145,12 +145,39 @@ fn verify_session_cookie(password: &str, value: &str) -> bool {
     diff == 0
 }
 
-/// HMAC signing key for the user-id session cookie. Deployments using the
-/// RBAC mode are expected to set `WSHM_JWT_SECRET`; the fallback only exists
-/// so the daemon boots in dev — sessions then become trivially forgeable,
-/// which is fine because `[web].password` is the real ACL in that mode.
+/// HMAC signing key for the user-id session cookie.
+///
+/// Resolution order:
+///   1. `WSHM_JWT_SECRET` env var (recommended for production — survives
+///      restarts so sessions stay valid across deploys).
+///   2. A 32-byte random key generated once per process on first use.
+///      Sessions are invalidated on restart but cannot be forged offline.
+///
+/// We deliberately removed the previous string fallback (`wshm-cookie-
+/// fallback`): once published in source it became a public HMAC key,
+/// letting anyone mint a cookie for any user_id on a deploy that forgot
+/// to set `WSHM_JWT_SECRET`.
 fn user_cookie_secret() -> String {
-    std::env::var("WSHM_JWT_SECRET").unwrap_or_else(|_| "wshm-cookie-fallback".to_string())
+    use std::sync::OnceLock;
+    static EPHEMERAL: OnceLock<String> = OnceLock::new();
+    if let Ok(v) = std::env::var("WSHM_JWT_SECRET") {
+        if !v.trim().is_empty() {
+            return v;
+        }
+    }
+    EPHEMERAL
+        .get_or_init(|| {
+            use rand::RngCore;
+            let mut buf = [0u8; 32];
+            rand::thread_rng().fill_bytes(&mut buf);
+            tracing::warn!(
+                "WSHM_JWT_SECRET not set — using ephemeral session key; \
+                 sessions will not survive a daemon restart. \
+                 Set WSHM_JWT_SECRET to a 32-byte hex string for stable sessions."
+            );
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
+        })
+        .clone()
 }
 
 /// Mints a session cookie carrying a user id: `<user_id>.<expires>.<sig>`.
@@ -245,6 +272,48 @@ async fn current_user(
 /// Browser HTML requests get a 302 redirect to `/login`; everything else
 /// (API/JSON) gets a 401 with a JSON error body. Apps in the SPA detect the
 /// 302 and render the login form.
+/// Returns Err(response) if the request is a mutating /api/v1/ call that
+/// lacks a CSRF-defeating custom header. Browsers cannot set custom
+/// headers on cross-origin requests without a CORS preflight, which we
+/// never grant — so requiring the header on POST/PATCH/PUT/DELETE blocks
+/// classic CSRF (form-submit / fetch with credentials:include from a
+/// third-party site, including sibling subdomains under the shared
+/// `.cloud.rtk-ai.app` cookie domain).
+///
+/// Public bootstrap endpoints (login, logout, license activate) are
+/// exempt — they have no authenticated state to abuse.
+fn csrf_check(req: &Request<Body>) -> Result<(), Response> {
+    let method = req.method();
+    if !matches!(method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE") {
+        return Ok(());
+    }
+    let path = req.uri().path();
+    if !path.starts_with("/api/v1/") {
+        return Ok(());
+    }
+    if matches!(
+        path,
+        "/api/v1/auth/login" | "/api/v1/auth/logout" | "/api/v1/license/activate"
+    ) {
+        return Ok(());
+    }
+    let has_token = req
+        .headers()
+        .get("x-wshm-csrf")
+        .or_else(|| req.headers().get("x-requested-with"))
+        .is_some();
+    if has_token {
+        return Ok(());
+    }
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(json!({
+            "error": "CSRF protection: include `X-Wshm-Csrf: 1` (or `X-Requested-With`) on POST/PATCH/PUT/DELETE"
+        })),
+    )
+        .into_response())
+}
+
 async fn auth_middleware(
     State(state): State<Arc<WebState>>,
     mut req: Request<Body>,
@@ -253,6 +322,9 @@ async fn auth_middleware(
     let path = req.uri().path().to_string();
     if is_public_path(&path) {
         return next.run(req).await;
+    }
+    if let Err(e) = csrf_check(&req) {
+        return e;
     }
 
     // RBAC mode: a UserStore is configured. Resolve identity through the
@@ -2216,14 +2288,14 @@ async fn api_secrets_put(
     user: axum::Extension<Option<crate::auth::User>>,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
-    tracing::info!(
+    tracing::debug!(
         target: "wshm_core::secrets_trace",
         "api_secrets_put: ENTERED, body keys = {:?}",
         body.as_object().map(|o| o.keys().collect::<Vec<_>>())
     );
     let admin = match require_admin(&user) {
         Ok(u) => {
-            tracing::info!(
+            tracing::debug!(
                 target: "wshm_core::secrets_trace",
                 "api_secrets_put: admin check PASSED, user_id={}",
                 u.id
@@ -2240,7 +2312,7 @@ async fn api_secrets_put(
     };
     let store = match state.secrets.as_ref() {
         Some(s) => {
-            tracing::info!(
+            tracing::debug!(
                 target: "wshm_core::secrets_trace",
                 "api_secrets_put: secret store available"
             );
@@ -2276,7 +2348,7 @@ async fn api_secrets_put(
     let slug = body.get("slug").and_then(|v| v.as_str());
     let key = body.get("key").and_then(|v| v.as_str()).unwrap_or("");
     let value = body.get("value").and_then(|v| v.as_str()).unwrap_or("");
-    tracing::info!(
+    tracing::debug!(
         target: "wshm_core::secrets_trace",
         "api_secrets_put: parsed scope={:?} slug={:?} key={:?} value_len={}",
         scope, slug, key, value.len()
@@ -2310,7 +2382,7 @@ async fn api_secrets_put(
     } else {
         None
     };
-    tracing::info!(
+    tracing::debug!(
         target: "wshm_core::secrets_trace",
         "api_secrets_put: calling store.put(scope={:?}, slug={:?}, key={:?})",
         scope, effective_slug, key.trim()
@@ -2320,7 +2392,7 @@ async fn api_secrets_put(
         .await
     {
         Ok(id) => {
-            tracing::info!(
+            tracing::debug!(
                 target: "wshm_core::secrets_trace",
                 "api_secrets_put: store.put OK — row id={id}"
             );
@@ -2329,13 +2401,13 @@ async fn api_secrets_put(
             // GhClient today; other keys are read on-demand by the relevant
             // pipeline so no reload is needed.
             if key.trim() == "github_token" {
-                tracing::info!(
+                tracing::debug!(
                     target: "wshm_core::secrets_trace",
                     "api_secrets_put: key is github_token — triggering reload"
                 );
                 reload_github_clients(&state, scope, effective_slug).await;
             } else {
-                tracing::info!(
+                tracing::debug!(
                     target: "wshm_core::secrets_trace",
                     "api_secrets_put: key={:?} ≠ github_token — no reload",
                     key.trim()
@@ -2367,7 +2439,7 @@ async fn reload_github_clients(
     slug: Option<&str>,
 ) {
     let repos_guard = state.multi.repos.read().await;
-    tracing::info!(
+    tracing::debug!(
         target: "wshm_core::secrets_trace",
         "reload_github_clients: scope={:?} slug={:?}, iterating {} repos",
         scope, slug, repos_guard.len()
@@ -2379,13 +2451,13 @@ async fn reload_github_clients(
             crate::secrets::Scope::Repo => slug == Some(repo_slug.as_str()),
         };
         if !matches {
-            tracing::info!(
+            tracing::debug!(
                 target: "wshm_core::secrets_trace",
                 "reload_github_clients: SKIPPING [{repo_slug}] (slug mismatch)"
             );
             continue;
         }
-        tracing::info!(
+        tracing::debug!(
             target: "wshm_core::secrets_trace",
             "reload_github_clients: RELOADING [{repo_slug}]"
         );
@@ -2471,10 +2543,19 @@ async fn api_secrets_delete(
 ///
 /// Query: `tail` (default 200, max 5000), `level` (ERROR/WARN/INFO/DEBUG/TRACE),
 /// `since` (numeric id — return only entries newer than this id).
+///
+/// Requires Operator role (or higher) when RBAC is enabled — log entries
+/// can include diagnostic context that members/viewers should not see.
 async fn api_logs(
     State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
     Query(params): Query<LogsQuery>,
 ) -> impl IntoResponse {
+    if state.users.is_some() {
+        if let Err(e) = require_min_role(&user, crate::auth::Role::Operator) {
+            return e;
+        }
+    }
     let logs = match state.logs.as_ref() {
         Some(b) => b,
         None => {

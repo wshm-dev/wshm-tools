@@ -14,6 +14,32 @@ use super::DaemonState;
 /// Poll interval (default 30s, GitHub events API has 1-min cache)
 const POLL_INTERVAL_SECS: u64 = 30;
 
+/// `sync_log.table_name` slot reused to persist the poller's
+/// `last_event_id` across daemon restarts. Without this, every restart
+/// reads the last 30 GitHub events as fresh and re-runs the analyze /
+/// triage pipelines, burning AI credits and posting duplicate review
+/// comments when `apply=true`.
+const POLLER_SYNC_KEY: &str = "__poller_last_event";
+
+fn load_last_event_id(state: &DaemonState) -> Option<String> {
+    state
+        .db
+        .get_sync_entry(POLLER_SYNC_KEY)
+        .ok()
+        .flatten()
+        .and_then(|e| e.etag)
+}
+
+fn store_last_event_id(state: &DaemonState, id: &str) {
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Err(e) = state
+        .db
+        .update_sync_entry(POLLER_SYNC_KEY, &now, Some(id))
+    {
+        warn!("Failed to persist poller last_event_id: {e}");
+    }
+}
+
 /// Multi-repo poller: tags events with the repo slug before sending.
 pub async fn run_multi(
     state: Arc<DaemonState>,
@@ -22,11 +48,12 @@ pub async fn run_multi(
     slug: String,
 ) {
     let interval = Duration::from_secs(interval_secs.unwrap_or(POLL_INTERVAL_SECS));
-    let mut last_event_id: Option<String> = None;
+    let mut last_event_id: Option<String> = load_last_event_id(&state);
 
     info!(
-        "[{slug}] Event poller started (every {}s)",
-        interval.as_secs()
+        "[{slug}] Event poller started (every {}s, last_event_id={:?})",
+        interval.as_secs(),
+        last_event_id
     );
 
     loop {
@@ -58,11 +85,12 @@ pub async fn run(
     interval_secs: Option<u64>,
 ) {
     let interval = Duration::from_secs(interval_secs.unwrap_or(POLL_INTERVAL_SECS));
-    let mut last_event_id: Option<String> = None;
+    let mut last_event_id: Option<String> = load_last_event_id(&state);
 
     info!(
-        "Event poller started (every {}s) — no webhook needed",
-        interval.as_secs()
+        "Event poller started (every {}s) — no webhook needed (last_event_id={:?})",
+        interval.as_secs(),
+        last_event_id
     );
 
     loop {
@@ -121,10 +149,12 @@ async fn poll_events(
         new_events.push(event.clone());
     }
 
-    // Update last seen
+    // Update last seen — both in-memory and persisted to sync_log so
+    // a daemon restart doesn't re-process the last 30 events.
     if let Some(first) = events.first() {
         if let Some(id) = first.get("id").and_then(|v| v.as_str()) {
             *last_event_id = Some(id.to_string());
+            store_last_event_id(state, id);
         }
     }
 

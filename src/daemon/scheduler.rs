@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
@@ -10,6 +11,33 @@ use super::DaemonState;
 
 /// Number of consecutive failures before sending an alert.
 const ALERT_THRESHOLD: u32 = 3;
+
+/// Process-global last-auto-update timestamp (unix seconds). Per-repo
+/// schedulers all check the same atomic before triggering
+/// `run_auto_update()` so 50 repos don't race to download the same
+/// release artifact and clobber each other on the file replace.
+static LAST_AUTO_UPDATE_AT: AtomicI64 = AtomicI64::new(0);
+
+/// Try to claim the next auto-update slot. Returns true exactly once per
+/// `interval` across all callers; returns false otherwise.
+fn try_claim_auto_update(interval: Duration) -> bool {
+    let now = chrono::Utc::now().timestamp();
+    let interval_secs = interval.as_secs() as i64;
+    loop {
+        let prev = LAST_AUTO_UPDATE_AT.load(Ordering::Acquire);
+        if prev != 0 && now.saturating_sub(prev) < interval_secs {
+            return false;
+        }
+        if LAST_AUTO_UPDATE_AT
+            .compare_exchange(prev, now, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            return true;
+        }
+        // Lost the race — another scheduler claimed the slot; retry the
+        // freshness check, which will now report "too soon".
+    }
+}
 
 pub async fn run(state: Arc<DaemonState>) {
     let interval = Duration::from_secs(state.config.sync.interval_minutes as u64 * 60);
@@ -160,8 +188,13 @@ pub async fn run(state: Arc<DaemonState>) {
             error!("Event cleanup failed: {e:#}");
         }
 
-        // Auto-update check
-        if state.config.update.enabled && last_update_check.elapsed() >= update_interval {
+        // Auto-update check — gated on a process-global atomic so only
+        // one repo's scheduler triggers the download per interval, even
+        // when N>1 schedulers race here at the same tick.
+        if state.config.update.enabled
+            && last_update_check.elapsed() >= update_interval
+            && try_claim_auto_update(update_interval)
+        {
             last_update_check = Instant::now();
             crate::pro_hooks::run_auto_update().await;
         }

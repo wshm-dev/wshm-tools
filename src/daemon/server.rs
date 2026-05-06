@@ -281,6 +281,53 @@ async fn handle_health_multi(State(state): State<Arc<MultiServerState>>) -> impl
     }))
 }
 
+/// In-memory replay cache for inbound webhooks. Keyed on the GitHub
+/// `x-github-delivery` UUID; values are the timestamp the delivery was
+/// first seen. Entries older than `REPLAY_TTL` are pruned lazily and the
+/// map is capped at `REPLAY_MAX` to bound memory.
+///
+/// Replay protection complements HMAC signature verification: a captured
+/// signed payload would still verify forever; this dedupes deliveries
+/// that arrive twice, whether through GitHub's documented retries or a
+/// malicious replay.
+static REPLAY_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+> = std::sync::OnceLock::new();
+const REPLAY_TTL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+const REPLAY_MAX: usize = 10_000;
+
+/// Returns Ok(()) when the delivery is fresh, Err(()) when it's a
+/// duplicate. Empty / missing delivery_id is always allowed (older
+/// senders may not provide it; the HMAC still gates auth).
+fn check_replay(delivery_id: &str) -> Result<(), ()> {
+    if delivery_id.is_empty() {
+        return Ok(());
+    }
+    let cache = REPLAY_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let Ok(mut map) = cache.lock() else {
+        return Ok(()); // poisoned mutex — fail open
+    };
+    let now = std::time::Instant::now();
+    if let Some(seen_at) = map.get(delivery_id) {
+        if now.duration_since(*seen_at) < REPLAY_TTL {
+            return Err(());
+        }
+    }
+    if map.len() >= REPLAY_MAX {
+        map.retain(|_, t| now.duration_since(*t) < REPLAY_TTL);
+        if map.len() >= REPLAY_MAX {
+            // Still full after pruning — drop a quarter at random.
+            let drop_n = REPLAY_MAX / 4;
+            let to_drop: Vec<String> = map.keys().take(drop_n).cloned().collect();
+            for k in to_drop {
+                map.remove(&k);
+            }
+        }
+    }
+    map.insert(delivery_id.to_string(), now);
+    Ok(())
+}
+
 async fn handle_webhook_multi(
     State(state): State<Arc<MultiServerState>>,
     headers: HeaderMap,
@@ -291,6 +338,20 @@ async fn handle_webhook_multi(
             Ok(v) => v,
             Err(resp) => return resp,
         };
+
+    // Replay protection: dedupe on x-github-delivery within REPLAY_TTL.
+    let delivery_id = headers
+        .get("x-github-delivery")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if check_replay(delivery_id).is_err() {
+        info!("Duplicate webhook delivery ignored: {delivery_id}");
+        return (
+            StatusCode::OK,
+            Json(json!({"status": "duplicate", "delivery_id": delivery_id})),
+        )
+            .into_response();
+    }
 
     // Route by repository.full_name
     let repo_slug = match payload
