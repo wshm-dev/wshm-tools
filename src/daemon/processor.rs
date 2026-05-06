@@ -163,10 +163,28 @@ async fn handle_issue(state: &DaemonState, event: &WebhookEvent) -> anyhow::Resu
         }
     }
 
+    let features = state.features();
+    if !features.collect_issues {
+        info!(
+            "[{}] collect_issues disabled — skipping sync for issue {number:?}",
+            state.config.repo_slug()
+        );
+        return Ok(());
+    }
     // Force sync issues (bypass throttle — we know there's a new event)
     gh_sync::sync_issues_now(&state.gh(), &state.db).await?;
 
-    // Run triage pipeline
+    if !features.triage_issues {
+        info!(
+            "[{}] triage_issues disabled — issue {number:?} synced but not triaged",
+            state.config.repo_slug()
+        );
+        return Ok(());
+    }
+
+    // Run triage pipeline. `apply` controls whether wshm posts a triage
+    // comment on GitHub; we keep the legacy semantic (state.apply) here
+    // because triage_issues already gated the AI run itself.
     let args = TriageArgs {
         issue: number,
         apply: state.apply,
@@ -234,8 +252,24 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
         }
     }
 
+    let features = state.features();
+    if !features.collect_prs {
+        info!(
+            "[{}] collect_prs disabled — skipping sync for PR {number:?}",
+            state.config.repo_slug()
+        );
+        return Ok(());
+    }
     // Force sync pulls (bypass throttle — we know there's a new event)
     gh_sync::sync_pulls_now(&state.gh(), &state.db).await?;
+
+    if !features.analyze_prs {
+        info!(
+            "[{}] analyze_prs disabled — PR {number:?} synced but not analyzed",
+            state.config.repo_slug()
+        );
+        return Ok(());
+    }
 
     // Run PR analysis pipeline
     let args = PrArgs {

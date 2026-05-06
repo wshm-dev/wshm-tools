@@ -48,6 +48,14 @@ pub async fn run(state: Arc<DaemonState>) {
     loop {
         tokio::time::sleep(interval).await;
 
+        let features = state.features();
+        if !features.collect_issues && !features.collect_prs {
+            info!(
+                "[{}] collect_issues and collect_prs both disabled — skipping periodic sync",
+                state.config.repo_slug()
+            );
+            continue;
+        }
         info!("Periodic sync triggered (incremental)");
         match github::sync::incremental_sync_full(&state.gh(), &state.db).await {
             Ok(_) => {
@@ -73,8 +81,10 @@ pub async fn run(state: Arc<DaemonState>) {
             }
         }
 
-        // Triage untriaged issues after sync
-        if state.config.triage.enabled {
+        // Triage untriaged issues after sync. Both the legacy
+        // [triage].enabled config flag AND the per-repo features.triage_issues
+        // toggle must be true.
+        if state.config.triage.enabled && features.triage_issues {
             let args = TriageArgs {
                 issue: None,
                 apply: state.apply,
@@ -114,8 +124,10 @@ pub async fn run(state: Arc<DaemonState>) {
             }
         }
 
-        // Periodic retriage: re-evaluate stale triage results
+        // Periodic retriage: re-evaluate stale triage results. Same dual
+        // gate as the regular triage loop above.
         if state.config.triage.enabled
+            && features.triage_issues
             && retriage_interval_hours > 0
             && last_retriage.elapsed() >= retriage_interval
         {
