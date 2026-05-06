@@ -165,7 +165,11 @@ fn resolve_provider(config: &Config, model_override: Option<&str>) -> Result<Pro
         "ollama" => Ok(ProviderConfig {
             api_url: base_url
                 .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".into()),
-            api_key: Zeroizing::new(std::env::var("OLLAMA_API_KEY").unwrap_or_default()),
+            // Optional auth header — most local Ollama deployments leave
+            // this blank; route through the secret store on the off
+            // chance someone fronts Ollama with a reverse-proxy auth.
+            api_key: env_key(&["OLLAMA_API_KEY"])
+                .unwrap_or_else(|_| Zeroizing::new(String::new())),
             model,
             kind: ProviderKind::OpenAiCompat,
             is_oauth: false,
@@ -210,8 +214,30 @@ fn resolve_provider(config: &Config, model_override: Option<&str>) -> Result<Pro
     }
 }
 
-/// Try multiple env var names, return the first one found (zeroized on drop).
+/// Resolve an AI provider key, checking the encrypted secret store first.
+///
+/// Order: `secrets::resolve_blocking(global, <store_key>)` → env vars in
+/// order. The store key uses lowercase form (`anthropic_api_key`,
+/// `openai_api_key`, …) so admins setting a key via Settings → Secrets
+/// don't have to deal with provider-specific env-var naming.
+///
+/// Each `name` in `env_names` is also tried on the secret store as
+/// lowercase (`OPENAI_API_KEY` → `openai_api_key`) before falling back
+/// to the env var. Fixes the audit finding that 13/14 providers
+/// bypassed the encrypted vault entirely.
 fn env_key(names: &[&str]) -> Result<Zeroizing<String>> {
+    if let Some(s) = crate::secrets::global() {
+        for name in names {
+            let store_key = name.to_ascii_lowercase();
+            if let Ok(Some(v)) =
+                s.get_blocking(crate::secrets::Scope::Global, None, &store_key)
+            {
+                if !v.is_empty() {
+                    return Ok(Zeroizing::new(v));
+                }
+            }
+        }
+    }
     for name in names {
         if let Ok(val) = std::env::var(name) {
             if !val.is_empty() {
