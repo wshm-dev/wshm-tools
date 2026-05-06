@@ -161,6 +161,12 @@ impl UserStore {
              VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
             params![email, username, hash, role.as_str(), now],
         )?;
+        // Re-creating a user via the admin UI is a deliberate decision to
+        // re-grant access, so clear the SSO-promotion tombstone.
+        conn.execute(
+            "DELETE FROM deleted_emails WHERE email = ?1",
+            params![email],
+        )?;
         Ok(conn.last_insert_rowid())
     }
 
@@ -175,11 +181,19 @@ impl UserStore {
         provider: &str,
     ) -> Result<User> {
         let now = Utc::now().to_rfc3339();
-        let bootstrap_admin_role = std::env::var("WSHM_ADMIN_EMAIL")
-            .ok()
-            .filter(|admin_email| admin_email.eq_ignore_ascii_case(email))
-            .map(|_| "admin")
-            .unwrap_or("member");
+        // M-3: bootstrap admin promotion is suppressed for tombstoned
+        // emails. An admin who deletes a user means it; SSO re-login
+        // mustn't silently restore privileges via WSHM_ADMIN_EMAIL.
+        let tombstoned = self.is_email_tombstoned(email).await.unwrap_or(false);
+        let bootstrap_admin_role = if tombstoned {
+            "member"
+        } else {
+            std::env::var("WSHM_ADMIN_EMAIL")
+                .ok()
+                .filter(|admin_email| admin_email.eq_ignore_ascii_case(email))
+                .map(|_| "admin")
+                .unwrap_or("member")
+        };
         let conn = self.conn.lock().await;
         conn.execute(
             "INSERT INTO users (email, username, password_hash, role, sso_provider,
@@ -227,12 +241,45 @@ impl UserStore {
     }
 
     pub async fn delete(&self, id: i64) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
         let conn = self.conn.lock().await;
+        // Tombstone: keep the email in `deleted_emails` so a future
+        // SSO upsert with the same address cannot silently re-claim
+        // admin via the WSHM_ADMIN_EMAIL bootstrap branch (the audit's
+        // M-3 finding). Wrap in a tx so the email never disappears
+        // from the DB without being recorded.
+        let email: Option<String> = conn
+            .query_row(
+                "SELECT email FROM users WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?;
         let n = conn.execute("DELETE FROM users WHERE id = ?1", params![id])?;
         if n == 0 {
             return Err(anyhow!("user {id} not found"));
         }
+        if let Some(e) = email {
+            conn.execute(
+                "INSERT INTO deleted_emails (email, deleted_at) VALUES (?1, ?2)
+                 ON CONFLICT(email) DO UPDATE SET deleted_at = excluded.deleted_at",
+                params![e, now],
+            )?;
+        }
         Ok(())
+    }
+
+    /// True if this email was previously deleted by an admin. Used to
+    /// stop the WSHM_ADMIN_EMAIL bootstrap from re-promoting a user
+    /// that was demoted-by-deletion.
+    async fn is_email_tombstoned(&self, email: &str) -> Result<bool> {
+        let conn = self.conn.lock().await;
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM deleted_emails WHERE email = ?1",
+            params![email],
+            |r| r.get(0),
+        )?;
+        Ok(n > 0)
     }
 
     pub async fn touch_login(&self, id: i64) -> Result<()> {
@@ -272,7 +319,15 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             created_at      TEXT NOT NULL,
             last_login_at   TEXT
         );
-        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);",
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+        -- Tombstone for previously-deleted users. Keeps SSO re-login
+        -- from silently re-promoting a demoted email via the
+        -- WSHM_ADMIN_EMAIL bootstrap branch. Cleared by an explicit
+        -- admin who re-creates the user, see UserStore::create_local.
+        CREATE TABLE IF NOT EXISTS deleted_emails (
+            email      TEXT PRIMARY KEY,
+            deleted_at TEXT NOT NULL
+        );",
     )?;
     Ok(())
 }
