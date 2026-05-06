@@ -128,6 +128,31 @@ async fn poll_events(
 
     let response = state.gh().octocrab._get(&url).await?;
 
+    // Surface rate-limit pressure before consuming the body. Headers
+    // we care about: `x-ratelimit-remaining` (drops as we burn quota)
+    // and `x-ratelimit-reset` (unix epoch seconds when it refills).
+    // Logging at warn! when remaining < 100 lets the operator see
+    // they're about to get throttled, well before it fires.
+    let headers = response.headers().clone();
+    if let Some(remaining) = headers
+        .get("x-ratelimit-remaining")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u32>().ok())
+    {
+        if remaining < 100 {
+            let reset = headers
+                .get("x-ratelimit-reset")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            let reset_in = (reset - chrono::Utc::now().timestamp()).max(0);
+            warn!(
+                "GitHub rate limit running low: {remaining} requests remaining \
+                 (resets in {reset_in}s). Consider increasing poll_interval."
+            );
+        }
+    }
+
     let body = state.gh().octocrab.body_to_string(response).await?;
     let events = crate::github::parse_json_array(&body, "events")?;
 
