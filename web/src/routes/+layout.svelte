@@ -7,11 +7,13 @@
 		fetchStatus,
 		fetchMe,
 		fetchAuthStatus,
+		fetchLicense,
 		syncIncremental,
 		syncFull,
 		type RepoInfo,
 		type Me,
-		type AuthStatus
+		type AuthStatus,
+		type LicenseInfo
 	} from '$lib/api';
 	import { canAccessRoute, can } from '$lib/permissions';
 	import {
@@ -34,6 +36,7 @@
 	let currentTheme: Theme = $state('dark');
 	let me: Me | null = $state(null);
 	let authStatus: AuthStatus | null = $state(null);
+	let license: LicenseInfo | null = $state(null);
 	let bannerOpen: boolean = $state(true);
 	theme.subscribe((t) => (currentTheme = t));
 
@@ -51,11 +54,21 @@
 
 	type IconName =
 		| 'dashboard' | 'summary' | 'issues' | 'prs' | 'triage' | 'queue'
-		| 'changelog' | 'revert' | 'backups' | 'activity' | 'actions' | 'logs' | 'settings';
+		| 'changelog' | 'revert' | 'backups' | 'activity' | 'actions' | 'logs'
+		| 'search' | 'settings';
 
-	const allNavItems: { href: string; label: string; icon: IconName }[] = [
+	type NavItem = {
+		href: string;
+		label: string;
+		icon: IconName;
+		/** When set, hide the item unless `license.features[id].enabled === true`. */
+		feature?: string;
+	};
+
+	const allNavItems: NavItem[] = [
 		{ href: '/', label: 'Dashboard', icon: 'dashboard' },
 		{ href: '/summary', label: 'Summary', icon: 'summary' },
+		{ href: '/search', label: 'Search', icon: 'search', feature: 'search' },
 		{ href: '/issues', label: 'Issues', icon: 'issues' },
 		{ href: '/prs', label: 'Pull Requests', icon: 'prs' },
 		{ href: '/triage', label: 'Triage', icon: 'triage' },
@@ -68,7 +81,16 @@
 		{ href: '/logs', label: 'Logs', icon: 'logs' },
 		{ href: '/settings', label: 'Settings', icon: 'settings' }
 	];
-	let navItems = $derived(allNavItems.filter((i) => canAccessRoute(me?.role, i.href)));
+	function isFeatureLicensed(featureId: string | undefined): boolean {
+		if (!featureId) return true;
+		const f = license?.features?.find((x) => x.id === featureId);
+		return f?.enabled === true;
+	}
+	let navItems = $derived(
+		allNavItems
+			.filter((i) => canAccessRoute(me?.role, i.href))
+			.filter((i) => isFeatureLicensed(i.feature))
+	);
 
 	function toggleCollapse() {
 		collapsed = !collapsed;
@@ -102,6 +124,9 @@
 		} catch { /* ignore */ }
 		try {
 			authStatus = await fetchAuthStatus();
+		} catch { /* ignore */ }
+		try {
+			license = await fetchLicense();
 		} catch { /* ignore */ }
 		try {
 			bannerOpen = localStorage.getItem('wshm-anon-banner-dismissed') !== 'true';
@@ -254,6 +279,9 @@
 									<path d="M4 4h16v4H4z" />
 									<path d="M4 12h16v4H4z" />
 									<path d="M4 20h10" />
+								{:else if item.icon === 'search'}
+									<circle cx="11" cy="11" r="7" />
+									<path d="M21 21l-4.3-4.3" />
 								{:else if item.icon === 'settings'}
 									<circle cx="12" cy="12" r="3" />
 									<path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
