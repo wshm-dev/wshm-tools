@@ -33,6 +33,8 @@
 		fetchAuthStatus,
 		setGithubToken,
 		setAnthropicToken,
+		removeGithubToken,
+		removeAnthropicToken,
 		fetchSecrets,
 		putSecret,
 		revealSecret,
@@ -390,6 +392,34 @@
 		savingAnthropic = false;
 	}
 
+	async function handleRemoveGithub() {
+		if (!confirm('Remove the GitHub token from this wshm instance?')) return;
+		savingGh = true; ghMessage = null; ghError = false;
+		try {
+			const r = await removeGithubToken();
+			ghMessage = r.message;
+			await refreshAuth();
+		} catch (e) {
+			ghMessage = e instanceof Error ? e.message : 'Remove failed';
+			ghError = true;
+		}
+		savingGh = false;
+	}
+
+	async function handleRemoveAnthropic() {
+		if (!confirm('Remove the Anthropic credentials from this wshm instance?')) return;
+		savingAnthropic = true; anthropicMessage = null; anthropicError = false;
+		try {
+			const r = await removeAnthropicToken();
+			anthropicMessage = r.message;
+			await refreshAuth();
+		} catch (e) {
+			anthropicMessage = e instanceof Error ? e.message : 'Remove failed';
+			anthropicError = true;
+		}
+		savingAnthropic = false;
+	}
+
 	async function handleActivate() {
 		if (!licenseKey.trim()) return;
 		activating = true; activateMessage = null; activateError = false;
@@ -517,6 +547,11 @@
 						<Button type="submit" color="blue" disabled={savingGh || !ghToken.trim()} size="sm" class="w-full">
 							{savingGh ? 'Saving...' : 'Save token'}
 						</Button>
+						{#if authStatus.github}
+							<Button type="button" color="red" outline disabled={savingGh} size="sm" class="w-full" onclick={handleRemoveGithub}>
+								Remove token
+							</Button>
+						{/if}
 					</form>
 				{:else}
 					<p class="text-sm text-gray-500">Loading...</p>
@@ -564,6 +599,11 @@
 						<Button type="submit" color="blue" disabled={savingAnthropic || !anthropicToken.trim()} size="sm" class="w-full">
 							{savingAnthropic ? 'Saving...' : 'Save token'}
 						</Button>
+						{#if authStatus.anthropic}
+							<Button type="button" color="red" outline disabled={savingAnthropic} size="sm" class="w-full" onclick={handleRemoveAnthropic}>
+								Remove credentials
+							</Button>
+						{/if}
 					</form>
 				{:else}
 					<p class="text-sm text-gray-500">Loading...</p>
