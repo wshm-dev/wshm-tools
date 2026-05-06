@@ -111,6 +111,72 @@ pub trait GitProvider: Send + Sync {
     async fn is_collaborator(&self, username: &str) -> Result<bool>;
 }
 
+/// Build a public web URL for an issue on the configured forge.
+///
+/// Used by the daemon's REST API to surface a "View on …" link from
+/// the SPA modals. Returns `None` for unknown providers; callers
+/// fall back to hiding the link rather than guessing.
+pub fn web_url_for_issue(config: &crate::config::Config, number: u64) -> Option<String> {
+    let owner = &config.repo_owner;
+    let repo = &config.repo_name;
+    let provider = config.git_provider.as_deref().unwrap_or("github");
+    let base = forge_base_url(config, provider);
+    match provider {
+        "github" => Some(format!("{base}/{owner}/{repo}/issues/{number}")),
+        "gitlab" => Some(format!("{base}/{owner}/{repo}/-/issues/{number}")),
+        "gitea" | "forgejo" => Some(format!("{base}/{owner}/{repo}/issues/{number}")),
+        "azure-devops" | "azure" => {
+            // Azure DevOps "issues" are work items, identified by ID across the whole org.
+            // `repo_owner` here is the org, `repo_name` carries `project/repo`.
+            let project = repo.split('/').next().unwrap_or(repo);
+            Some(format!("{base}/{owner}/{project}/_workitems/edit/{number}"))
+        }
+        _ => None,
+    }
+}
+
+/// Build a public web URL for a pull/merge request on the configured forge.
+pub fn web_url_for_pr(config: &crate::config::Config, number: u64) -> Option<String> {
+    let owner = &config.repo_owner;
+    let repo = &config.repo_name;
+    let provider = config.git_provider.as_deref().unwrap_or("github");
+    let base = forge_base_url(config, provider);
+    match provider {
+        "github" => Some(format!("{base}/{owner}/{repo}/pull/{number}")),
+        "gitlab" => Some(format!("{base}/{owner}/{repo}/-/merge_requests/{number}")),
+        "gitea" | "forgejo" => Some(format!("{base}/{owner}/{repo}/pulls/{number}")),
+        "azure-devops" | "azure" => {
+            let parts: Vec<&str> = repo.splitn(2, '/').collect();
+            let project = parts.first().copied().unwrap_or(repo.as_str());
+            let repo_only = parts.get(1).copied().unwrap_or(repo.as_str());
+            Some(format!(
+                "{base}/{owner}/{project}/_git/{repo_only}/pullrequest/{number}"
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Resolve the public base URL for the configured forge, with sensible
+/// defaults for the SaaS instance of each provider.
+fn forge_base_url(config: &crate::config::Config, provider: &str) -> String {
+    if let Some(custom) = config.git_url.as_deref() {
+        let trimmed = custom.trim_end_matches('/');
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    match provider {
+        "github" => "https://github.com",
+        "gitlab" => "https://gitlab.com",
+        "gitea" => "https://gitea.com",
+        "forgejo" => "https://codeberg.org",
+        "azure-devops" | "azure" => "https://dev.azure.com",
+        _ => "",
+    }
+    .to_string()
+}
+
 /// Build a git provider from config.
 pub fn build_provider(config: &crate::config::Config) -> Result<Box<dyn GitProvider>> {
     let provider = config.git_provider.as_deref().unwrap_or("github");

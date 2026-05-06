@@ -1094,6 +1094,7 @@ async fn api_issues(
                     "category": triage.as_ref().map(|t| t.category.as_str()),
                     "pr_status": pr_status,
                     "linked_prs": linked,
+                    "url": crate::git_provider::web_url_for_issue(&ds.config, issue.number),
                 }));
             }
         }
@@ -1148,6 +1149,7 @@ async fn api_pulls(
                     "risk_level": analysis.as_ref().map(|a| a.risk_level.as_str()),
                     "pr_type": analysis.as_ref().map(|a| a.pr_type.as_str()),
                     "summary": analysis.as_ref().map(|a| a.summary.as_str()),
+                    "url": crate::git_provider::web_url_for_pr(&ds.config, pr.number),
                 }));
             }
         }

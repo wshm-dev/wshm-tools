@@ -59,6 +59,9 @@ export interface Status {
 
 export interface Issue {
 	repo: string;
+	/** Public web URL on the source forge (GitHub/GitLab/Gitea/Forgejo/Azure DevOps).
+	 *  Optional because older daemon versions didn't include it. */
+	url?: string | null;
 	number: number;
 	title: string;
 	body: string | null;
@@ -74,6 +77,8 @@ export interface Issue {
 
 export interface PullRequest {
 	repo: string;
+	/** Public web URL on the source forge. Optional for backward compat. */
+	url?: string | null;
 	number: number;
 	title: string;
 	body: string | null;
