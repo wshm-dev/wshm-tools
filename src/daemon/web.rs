@@ -1979,8 +1979,13 @@ async fn api_auth_status(State(state): State<Arc<WebState>>) -> impl IntoRespons
     }))
 }
 
-/// POST /api/v1/auth/github -- store GITHUB_TOKEN in .wshm/credentials.
-async fn api_auth_github(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+/// POST /api/v1/auth/github -- store GITHUB_TOKEN in .wshm/credentials,
+/// update the process env, and hot-reload every running GitHub client so
+/// the change takes effect without a daemon restart.
+async fn api_auth_github(
+    State(state): State<Arc<WebState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
     let token = match body.get("token").and_then(|v| v.as_str()) {
         Some(t) if !t.trim().is_empty() => t.trim().to_string(),
         _ => {
@@ -1993,19 +1998,28 @@ async fn api_auth_github(Json(body): Json<serde_json::Value>) -> impl IntoRespon
     };
 
     let mut creds = crate::login::load_credentials();
-    creds.insert("GITHUB_TOKEN".to_string(), token);
-    match crate::login::save_credentials(&creds) {
-        Ok(()) => Json(json!({
-            "status": "ok",
-            "message": "GitHub token saved to .wshm/credentials",
-        }))
-        .into_response(),
-        Err(e) => (
+    creds.insert("GITHUB_TOKEN".to_string(), token.clone());
+    if let Err(e) = crate::login::save_credentials(&creds) {
+        return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"status": "error", "message": format!("{e}")})),
         )
-            .into_response(),
+            .into_response();
     }
+
+    // Update the process env so any subsequent Client::new() picks up the
+    // new token via the legacy env-var fallback in config.github_token_optional.
+    std::env::set_var("GITHUB_TOKEN", &token);
+
+    // Hot-reload every running per-repo daemon's GhClient so existing
+    // pollers / scheduler / processor stop being anonymous immediately.
+    reload_github_clients(&state, crate::secrets::Scope::Global, None).await;
+
+    Json(json!({
+        "status": "ok",
+        "message": "GitHub token saved and applied (no restart needed)",
+    }))
+    .into_response()
 }
 
 /// POST /api/v1/auth/anthropic -- store Anthropic OAuth token or API key.

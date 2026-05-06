@@ -669,6 +669,15 @@
 
 	<!-- ========================= SECRETS ============================ -->
 	<TabItem title="Secrets">
+		<!-- Disambiguation banner: this tab is for advanced / per-repo
+		     secrets. Common GitHub / Anthropic tokens belong in their
+		     dedicated tabs. -->
+		<Alert color="blue" class="mb-4 text-sm">
+			<span class="font-semibold">Advanced encrypted secrets store.</span>
+			For your GitHub token, use <strong>Git providers</strong>; for Anthropic / OpenAI / Gemini API keys, use <strong>AI providers</strong>.
+			This tab is for <em>additional</em> secrets (per-repo overrides, custom integrations) stored encrypted alongside the token store.
+		</Alert>
+
 		<!-- Doc / how-to: create a github_token. Toggleable so admins
 		     who already know the drill don't see it every visit. -->
 		<details class="mb-4 rounded border border-gray-700 bg-gray-800/60 open:bg-gray-800">
