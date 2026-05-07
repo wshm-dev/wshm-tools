@@ -3,24 +3,24 @@
 # ────────────────────────────────────────────────────────────────
 # Stage 1 — builder
 # ────────────────────────────────────────────────────────────────
-FROM rust:1-trixie AS builder
+ARG ALPINE_VERSION=3.23
+FROM rust:1-alpine$ALPINE_VERSION AS builder
 
-COPY --from=oven/bun:1-debian --chmod=a=rX /usr/local/bin/bun /usr/local/bin/
+COPY --from=oven/bun:1-alpine --chmod=a=rX /usr/local/bin/bun /usr/local/bin/
 
 WORKDIR /build
 COPY . .
 RUN cd web && bun install --frozen-lockfile && bun run build
+RUN apk update && apk add --no-cache musl-dev perl make ca-certificates
 RUN cargo build --release --bin wshm && strip target/release/wshm
 
 # ────────────────────────────────────────────────────────────────
 # Stage 2 — runtime
 # ────────────────────────────────────────────────────────────────
-FROM debian:trixie-slim
+FROM alpine:$ALPINE_VERSION
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates git \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --create-home --home-dir /home/wshm --shell /usr/sbin/nologin wshm
+RUN apk update && apk add --no-cache -X https://dl-cdn.alpinelinux.org/alpine/$${ALPINE_VERSION}/community ca-certificates libgit2  \
+    && adduser -S wshm -h /home/wshm -s /bin/false
 
 COPY --from=builder /build/target/release/wshm /usr/local/bin/wshm
 

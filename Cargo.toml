@@ -74,6 +74,8 @@ is-terminal = "0.4"
 zeroize = "1"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 rustls = { version = "0.23", features = ["ring"] }
+# Compile OpenSSL for Alpine
+openssl = { version = "0.10", features = ["vendored"] }
 # Local accounts: password hashing + secure random generation.
 argon2 = "0.5"
 rand = "0.8"
