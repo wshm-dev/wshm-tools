@@ -22,7 +22,7 @@
 		Tooltip,
 	} from 'flowbite-svelte';
 	import { colorConfig, type ColorConfig } from '$lib/colors';
-	import { t } from '$lib/i18n';
+	import { t, tr } from '$lib/i18n';
 
 	let translate = $state<(k: string) => string>((k) => k);
 	t.subscribe((fn) => (translate = fn));
@@ -282,7 +282,7 @@
 		featuresSaving = true;
 		try {
 			await updateRepoFeatures(featuresSlug, featuresDraft);
-			featuresMessage = 'Features saved.';
+			featuresMessage = tr('settings.features.saved');
 			featuresMessageErr = false;
 			featuresModalOpen = false;
 			await refreshRepos();
@@ -472,31 +472,31 @@
 </svelte:head>
 
 <div class="mb-4">
-	<Heading tag="h2" class="text-xl mb-1">Settings</Heading>
-	<p class="text-sm text-gray-500">Connections, license, appearance, and configuration</p>
+	<Heading tag="h2" class="text-xl mb-1">{$t('settings.title')}</Heading>
+	<p class="text-sm text-gray-500">{$t('settings.subtitle')}</p>
 </div>
 
 <Tabs tabStyle="underline" contentClass="bg-transparent p-0 mt-4">
 	<!-- ========================= REPOSITORIES ========================= -->
-	<TabItem open title="Repositories">
+	<TabItem open title={$t('settings.tabs.repos')}>
 		<div class="w-full">
 			<Card class="bg-gray-800 border-gray-700 max-w-none">
-				<Heading tag="h3" class="text-base mb-4">Repositories</Heading>
+				<Heading tag="h3" class="text-base mb-4">{$t('settings.repos.title')}</Heading>
 
 				{#if reposList}
 					<div class="mb-3">
-						<h4 class="text-xs font-semibold text-blue-400 mb-2">Configured ({reposList.repos.length})</h4>
+						<h4 class="text-xs font-semibold text-blue-400 mb-2">{$t('settings.repos.configured')} ({reposList.repos.length})</h4>
 						{#if reposList.repos.length === 0}
-							<p class="text-xs text-gray-500">None configured.</p>
+							<p class="text-xs text-gray-500">{$t('settings.repos.none')}</p>
 						{:else}
 							<ul class="space-y-1 text-xs">
 								{#each reposList.repos as r}
 									<li class="flex items-center justify-between gap-2">
 										<span class="text-gray-300 mono">{r.slug}</span>
 										<div class="flex items-center gap-2">
-											<Badge color={r.apply ? 'green' : 'dark'}>{r.apply ? 'apply' : 'dry-run'}</Badge>
+											<Badge color={r.apply ? 'green' : 'dark'}>{r.apply ? $t('settings.repos.badge.apply') : $t('settings.repos.badge.dryrun')}</Badge>
 											<Button color="alternative" size="xs" onclick={() => openFeaturesModal(r.slug)}>
-												Edit features
+												{$t('settings.repos.editFeatures')}
 											</Button>
 										</div>
 									</li>
@@ -513,46 +513,47 @@
 						{#if reposList.dynamic_add_supported}
 							<form onsubmit={(e) => { e.preventDefault(); handleAddRepo(); }} class="space-y-2">
 								<div>
-									<Label for="repo-slug" class="text-xs mb-1">Slug</Label>
+									<Label for="repo-slug" class="text-xs mb-1">{$t('settings.repos.slug')}</Label>
 									<Input id="repo-slug" type="text" bind:value={newRepoSlug} placeholder="owner/repo" disabled={addingRepo} size="sm" />
 								</div>
 								<div>
-									<Label for="repo-path" class="text-xs mb-1">Path (optional)</Label>
+									<Label for="repo-path" class="text-xs mb-1">{$t('settings.repos.pathOptional')}</Label>
 									<Input id="repo-path" type="text" bind:value={newRepoPath} placeholder="/abs/path" disabled={addingRepo} size="sm" />
 								</div>
 								<Button type="submit" color="blue" disabled={addingRepo || !newRepoSlug.trim()} size="sm" class="w-full">
-									{addingRepo ? 'Adding...' : 'Add repository'}
+									{addingRepo ? $t('settings.repos.adding') : $t('settings.repos.add')}
 								</Button>
 							</form>
 						{:else}
 							<Helper>
-								Dynamic add not available — daemon running mono-repo. Edit
-								<code class="rounded bg-gray-700 px-1 py-0.5">~/.wshm/global.toml</code> and restart.
+								{$t('settings.repos.dynamicNotAvailable')}
+								<code class="rounded bg-gray-700 px-1 py-0.5">~/.wshm/global.toml</code>
+								{$t('settings.repos.dynamicNotAvailable.suffix')}
 							</Helper>
 						{/if}
 					</div>
 				{:else}
-					<p class="text-sm text-gray-500">Loading...</p>
+					<p class="text-sm text-gray-500">{$t('common.loading')}</p>
 				{/if}
 			</Card>
 		</div>
 	</TabItem>
 
 	<!-- ========================= GIT PROVIDERS ========================= -->
-	<TabItem title="Git providers">
+	<TabItem title={$t('settings.tabs.gitProviders')}>
 		<div class="w-full">
 			<Card class="bg-gray-800 border-gray-700 max-w-none">
-				<Heading tag="h3" class="text-base mb-4">GitHub authentication</Heading>
+				<Heading tag="h3" class="text-base mb-4">{$t('settings.git.title')}</Heading>
 
 				{#if authStatus}
 					<div class="mb-3">
 						<Badge large color={authStatus.github ? 'green' : 'dark'}>
-							{authStatus.github ? 'Configured' : 'Not configured'}
+							{authStatus.github ? $t('settings.git.configured') : $t('settings.git.notConfigured')}
 						</Badge>
 					</div>
 
 					<Helper class="mb-3">
-						Personal Access Token. <a href="https://github.com/settings/tokens" target="_blank" class="text-blue-400 hover:underline">Generate one</a> with <code class="rounded bg-gray-700 px-1 py-0.5">repo</code> scope.
+						{$t('settings.git.helper.intro')} <a href="https://github.com/settings/tokens" target="_blank" class="text-blue-400 hover:underline">{$t('settings.git.helper.generate')}</a> {$t('settings.git.helper.scope')}
 					</Helper>
 
 					{#if ghMessage}
@@ -561,46 +562,46 @@
 
 					<form onsubmit={(e) => { e.preventDefault(); handleSetGithub(); }} class="space-y-2">
 						<div>
-							<Label for="gh-token" class="text-xs mb-1">Token</Label>
+							<Label for="gh-token" class="text-xs mb-1">{$t('settings.git.token')}</Label>
 							<Input id="gh-token" type="password" bind:value={ghToken} placeholder="ghp_..." disabled={savingGh} size="sm" />
 						</div>
 						<Button type="submit" color="blue" disabled={savingGh || !ghToken.trim()} size="sm" class="w-full">
-							{savingGh ? 'Saving...' : 'Save token'}
+							{savingGh ? $t('common.saving') : $t('settings.git.save')}
 						</Button>
 						{#if authStatus.github}
 							<Button type="button" color="red" outline disabled={savingGh} size="sm" class="w-full" onclick={handleRemoveGithub}>
-								Remove token
+								{$t('settings.git.remove')}
 							</Button>
 						{/if}
 					</form>
 				{:else}
-					<p class="text-sm text-gray-500">Loading...</p>
+					<p class="text-sm text-gray-500">{$t('common.loading')}</p>
 				{/if}
 			</Card>
-			<Helper class="mt-3 text-xs">More providers (GitLab, Gitea, Forgejo, Azure DevOps) coming soon.</Helper>
+			<Helper class="mt-3 text-xs">{$t('settings.git.moreSoon')}</Helper>
 		</div>
 	</TabItem>
 
 	<!-- ========================= AI PROVIDERS ========================= -->
-	<TabItem title="AI providers">
+	<TabItem title={$t('settings.tabs.aiProviders')}>
 		<div class="w-full">
 			<Card class="bg-gray-800 border-gray-700 max-w-none">
-				<Heading tag="h3" class="text-base mb-4">Claude / Anthropic authentication</Heading>
+				<Heading tag="h3" class="text-base mb-4">{$t('settings.ai.title')}</Heading>
 
 				{#if authStatus}
 					<div class="mb-3">
 						<Badge large color={authStatus.anthropic ? 'green' : 'dark'}>
 							{authStatus.anthropic === 'oauth'
-								? 'OAuth (Max/Pro)'
+								? $t('settings.ai.badge.oauth')
 								: authStatus.anthropic === 'api_key'
-									? 'API key'
-									: 'Not configured'}
+									? $t('settings.ai.badge.apiKey')
+									: $t('settings.ai.badge.notConfigured')}
 						</Badge>
 					</div>
 
 					<Helper class="mb-3">
-						OAuth token (run <code class="rounded bg-gray-700 px-1 py-0.5">claude /token</code> in Claude Code) or an
-						<a href="https://console.anthropic.com/" target="_blank" class="text-blue-400 hover:underline">API key</a>.
+						{$t('settings.ai.helper')} <code class="rounded bg-gray-700 px-1 py-0.5">claude /token</code> {$t('settings.ai.helper.suffix')}
+						<a href="https://console.anthropic.com/" target="_blank" class="text-blue-400 hover:underline">{$t('settings.ai.helper.apiKey')}</a>.
 					</Helper>
 
 					{#if anthropicMessage}
@@ -609,46 +610,46 @@
 
 					<form onsubmit={(e) => { e.preventDefault(); handleSetAnthropic(); }} class="space-y-2">
 						<div class="flex gap-4 text-xs">
-							<Radio bind:group={anthropicKind} value="oauth" disabled={savingAnthropic}>OAuth</Radio>
-							<Radio bind:group={anthropicKind} value="api_key" disabled={savingAnthropic}>API key</Radio>
+							<Radio bind:group={anthropicKind} value="oauth" disabled={savingAnthropic}>{$t('settings.ai.kind.oauth')}</Radio>
+							<Radio bind:group={anthropicKind} value="api_key" disabled={savingAnthropic}>{$t('settings.ai.kind.apiKey')}</Radio>
 						</div>
 						<div>
-							<Label for="anth-token" class="text-xs mb-1">Token</Label>
+							<Label for="anth-token" class="text-xs mb-1">{$t('settings.git.token')}</Label>
 							<Input id="anth-token" type="password" bind:value={anthropicToken} placeholder={anthropicKind === 'oauth' ? 'sk-ant-oat01-...' : 'sk-ant-api03-...'} disabled={savingAnthropic} size="sm" />
 						</div>
 						<Button type="submit" color="blue" disabled={savingAnthropic || !anthropicToken.trim()} size="sm" class="w-full">
-							{savingAnthropic ? 'Saving...' : 'Save token'}
+							{savingAnthropic ? $t('common.saving') : $t('settings.ai.save')}
 						</Button>
 						{#if authStatus.anthropic}
 							<Button type="button" color="red" outline disabled={savingAnthropic} size="sm" class="w-full" onclick={handleRemoveAnthropic}>
-								Remove credentials
+								{$t('settings.ai.remove')}
 							</Button>
 						{/if}
 					</form>
 				{:else}
-					<p class="text-sm text-gray-500">Loading...</p>
+					<p class="text-sm text-gray-500">{$t('common.loading')}</p>
 				{/if}
 			</Card>
-			<Helper class="mt-3 text-xs">More providers (OpenAI, Gemini, Ollama, Azure OpenAI) coming soon.</Helper>
+			<Helper class="mt-3 text-xs">{$t('settings.ai.moreSoon')}</Helper>
 		</div>
 	</TabItem>
 
 	<!-- ============================ LICENSE ============================ -->
-	<TabItem title="License">
+	<TabItem title={$t('settings.tabs.license')}>
 		<Card class="bg-gray-800 border-gray-700 max-w-none">
-			<Heading tag="h3" class="text-base mb-4">License</Heading>
+			<Heading tag="h3" class="text-base mb-4">{$t('settings.license.title')}</Heading>
 
 			{#if license}
 				<div class="flex items-center gap-3 mb-4">
 					<Badge large color={license.is_pro ? 'green' : 'dark'}>{license.plan.toUpperCase()}</Badge>
 					{#if !license.is_pro}
-						<span class="text-sm text-gray-400">Free tier</span>
+						<span class="text-sm text-gray-400">{$t('settings.license.free')}</span>
 					{/if}
 				</div>
 
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
 					<div>
-						<h4 class="text-sm font-semibold text-gray-400 mb-2">OSS Features (included)</h4>
+						<h4 class="text-sm font-semibold text-gray-400 mb-2">{$t('settings.license.ossFeatures')}</h4>
 						<div class="flex flex-wrap gap-1">
 							{#each license.oss_features as f}
 								<Badge color="blue">{f}</Badge>
@@ -656,12 +657,12 @@
 						</div>
 					</div>
 					<div>
-						<h4 class="text-sm font-semibold text-gray-400 mb-2">Pro Features</h4>
+						<h4 class="text-sm font-semibold text-gray-400 mb-2">{$t('settings.license.proFeatures')}</h4>
 						<div class="space-y-1">
 							{#each license.features as f}
 								<div class="flex items-center justify-between text-sm">
 									<span class="text-gray-300">{f.label}</span>
-									<Badge color={f.enabled ? 'green' : 'dark'}>{f.enabled ? 'Active' : 'Locked'}</Badge>
+									<Badge color={f.enabled ? 'green' : 'dark'}>{f.enabled ? $t('settings.license.feature.active') : $t('settings.license.feature.locked')}</Badge>
 								</div>
 							{/each}
 						</div>
@@ -673,28 +674,28 @@
 						<Alert color={activateError ? 'red' : 'green'} class="text-xs py-2 mb-2">{activateMessage}</Alert>
 					{/if}
 
-					<Helper class="mb-2">{license.is_pro ? 'Update license key:' : 'Enter your license key:'}</Helper>
+					<Helper class="mb-2">{license.is_pro ? $t('settings.license.update') : $t('settings.license.enter')}</Helper>
 					<form onsubmit={(e) => { e.preventDefault(); handleActivate(); }} class="flex gap-2">
 						<Input type="text" bind:value={licenseKey} placeholder="wshm-pro-xxxx-xxxx-xxxx" disabled={activating} size="sm" class="flex-1" />
 						<Button type="submit" color="blue" disabled={activating || !licenseKey.trim()} size="sm">
-							{activating ? 'Activating...' : 'Activate'}
+							{activating ? $t('settings.license.activating') : $t('settings.license.activate')}
 						</Button>
 					</form>
 
 					{#if !license.is_pro}
 						<p class="text-xs text-gray-500 mt-2">
-							<a href="https://wshm.dev/pro" target="_blank" class="text-blue-400 hover:underline">Get a license</a>
+							<a href="https://wshm.dev/pro" target="_blank" class="text-blue-400 hover:underline">{$t('settings.license.getLicense')}</a>
 						</p>
 					{/if}
 				</div>
 			{:else}
-				<p class="text-sm text-gray-500">Loading...</p>
+				<p class="text-sm text-gray-500">{$t('common.loading')}</p>
 			{/if}
 		</Card>
 	</TabItem>
 
 	<!-- ========================== APPEARANCE ========================== -->
-	<TabItem title="Appearance">
+	<TabItem title={$t('settings.tabs.appearance')}>
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 			<Card class="bg-gray-800 border-gray-700 max-w-none">
 				<Heading tag="h3" class="text-base mb-4">Color Scheme</Heading>
@@ -774,7 +775,7 @@
 	</TabItem>
 
 	<!-- ========================= CONFIGURATION ========================= -->
-	<TabItem title="Configuration">
+	<TabItem title={$t('settings.tabs.configuration')}>
 		<Card class="bg-gray-800 border-gray-700 max-w-none">
 			<Heading tag="h3" class="text-base mb-4">Configuration</Heading>
 			<Helper class="mb-4">
@@ -803,7 +804,7 @@
 	</TabItem>
 
 	<!-- ========================= SECRETS ============================ -->
-	<TabItem title="Secrets">
+	<TabItem title={$t('settings.tabs.secrets')}>
 		<!-- Disambiguation banner: this tab is for advanced / per-repo
 		     secrets. Common GitHub / Anthropic tokens belong in their
 		     dedicated tabs. -->
@@ -941,7 +942,7 @@
 	</TabItem>
 
 	<!-- ========================= USERS (RBAC) ========================= -->
-	<TabItem title="Users">
+	<TabItem title={$t('settings.tabs.users')}>
 		<Card class="bg-gray-800 border-gray-700 max-w-none">
 			<div class="flex items-start justify-between mb-4 gap-3">
 				<div>
@@ -1125,7 +1126,7 @@
 <!-- Edit features modal -->
 <Modal
 	bind:open={featuresModalOpen}
-	title={featuresSlug ? `Features — ${featuresSlug}` : 'Features'}
+	title={featuresSlug ? `${$t('settings.features.modalTitleFor')} ${featuresSlug}` : $t('settings.features.modalTitle')}
 	size="lg"
 	dismissable
 	class="bg-gray-900 border-gray-700"
