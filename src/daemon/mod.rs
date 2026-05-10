@@ -33,7 +33,13 @@ pub struct DaemonState {
     /// Call sites get a snapshot via [`DaemonState::gh()`].
     gh: std::sync::RwLock<Arc<GhClient>>,
     pub config: Arc<Config>,
-    pub apply: bool,
+    /// Master apply mode for this repo: `true` = post comments / labels /
+    /// PRs to GitHub, `false` = compute results visible in the dashboard
+    /// only (DRY-RUN). Mutated at runtime via the Settings → Repos modal
+    /// (PATCH /api/v1/repos/{slug}/features `{"apply": true|false}`); use
+    /// the [`DaemonState::apply`] getter — pipelines must read the live
+    /// value, not capture a startup snapshot.
+    apply: std::sync::atomic::AtomicBool,
     /// Per-repo feature toggles. Snapshot via [`DaemonState::features`].
     /// Pipelines must check the relevant flag before performing mutating
     /// actions (triage, analyze, auto-fix, merge).
@@ -60,9 +66,21 @@ impl DaemonState {
             db,
             gh: std::sync::RwLock::new(gh),
             config,
-            apply,
+            apply: std::sync::atomic::AtomicBool::new(apply),
             features: std::sync::RwLock::new(features),
         }
+    }
+
+    /// Live apply-mode flag. `true` → mutating actions hit GitHub;
+    /// `false` → DRY-RUN (compute + log only).
+    pub fn apply(&self) -> bool {
+        self.apply.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Toggle apply mode at runtime. Persistence to global.toml is the
+    /// caller's responsibility (see api_repo_features_patch).
+    pub fn set_apply(&self, v: bool) {
+        self.apply.store(v, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Snapshot of the current GitHub client. The returned Arc is

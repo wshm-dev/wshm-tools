@@ -1120,8 +1120,41 @@
 		<p class="text-sm text-gray-500">Loading…</p>
 	{:else}
 		<div class="space-y-4">
+			<!-- Master mode: dry-run vs apply. Switches all write-back actions. -->
+			<div
+				class="rounded-lg border p-3 transition-colors {featuresDraft.apply
+					? 'border-green-700/60 bg-green-900/20'
+					: 'border-yellow-700/60 bg-yellow-900/20'}"
+			>
+				<div class="flex items-center justify-between gap-3">
+					<div>
+						<h4 class="text-sm font-semibold {featuresDraft.apply ? 'text-green-300' : 'text-yellow-300'}">
+							Mode: {featuresDraft.apply ? 'Apply (write to GitHub)' : 'Dry-run (preview only)'}
+						</h4>
+						<p class="text-xs text-gray-400 mt-0.5">
+							{#if featuresDraft.apply}
+								wshm will post comments, set labels, and open PRs based on the AI actions enabled below.
+							{:else}
+								wshm computes AI classifications visible in the Triage / PRs tabs but does <strong>not</strong> write to GitHub. Toggle on to start applying actions.
+							{/if}
+						</p>
+					</div>
+					<label class="inline-flex items-center cursor-pointer shrink-0">
+						<input
+							type="checkbox"
+							bind:checked={featuresDraft.apply}
+							class="sr-only peer"
+						/>
+						<span class="relative w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500/40 rounded-full peer peer-checked:bg-green-600 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-5"></span>
+					</label>
+				</div>
+			</div>
+
 			<div>
 				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">Read-only collection</h4>
+				<p class="text-xs text-gray-500 mb-2">
+					Sync GitHub data into the local DB. Always safe — no writes back.
+				</p>
 				<div class="space-y-1.5">
 					<label class="flex items-center gap-2 text-sm">
 						<input type="checkbox" bind:checked={featuresDraft.collect_issues} class="rounded" />
@@ -1134,37 +1167,53 @@
 				</div>
 			</div>
 
-			<div>
-				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">AI classification</h4>
+			<div class:opacity-60={!featuresDraft.apply}>
+				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">
+					AI classification
+					{#if !featuresDraft.apply}
+						<span class="ml-2 text-yellow-500/80 normal-case font-normal">(computed only — no GitHub writes while in dry-run)</span>
+					{/if}
+				</h4>
+				<p class="text-xs text-gray-500 mb-2">
+					When <strong>Mode: Apply</strong> is on, these run on every sync and post results to GitHub. In dry-run they still run but only update the local DB and the dashboard tabs.
+				</p>
 				<div class="space-y-1.5">
 					<label class="flex items-center gap-2 text-sm">
 						<input type="checkbox" bind:checked={featuresDraft.triage_issues} class="rounded" />
-						<span><strong>Triage issues</strong> <span class="text-xs text-gray-500">— AI category/priority + label issues</span></span>
+						<span><strong>Triage issues</strong> <span class="text-xs text-gray-500">— AI category + priority; posts labels and a summary comment when Apply is on</span></span>
 					</label>
 					<label class="flex items-center gap-2 text-sm">
 						<input type="checkbox" bind:checked={featuresDraft.analyze_prs} class="rounded" />
-						<span><strong>Analyze PRs</strong> <span class="text-xs text-gray-500">— AI risk/type/summary + comment</span></span>
+						<span><strong>Analyze PRs</strong> <span class="text-xs text-gray-500">— AI risk + type + checklist; posts a summary comment when Apply is on</span></span>
 					</label>
 					<label class="flex items-center gap-2 text-sm">
 						<input type="checkbox" bind:checked={featuresDraft.review_prs} class="rounded" />
 						<span>
 							<strong>Review PRs (Pro)</strong>
-							<span class="text-xs text-gray-500">— inline code review on PRs</span>
+							<span class="text-xs text-gray-500">— inline code review on PR diffs (Pro feature)</span>
 						</span>
 					</label>
 				</div>
 			</div>
 
-			<div>
-				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">Auto-actions</h4>
+			<div class:opacity-60={!featuresDraft.apply}>
+				<h4 class="text-xs uppercase text-gray-500 font-semibold mb-2">
+					Auto-actions
+					{#if !featuresDraft.apply}
+						<span class="ml-2 text-yellow-500/80 normal-case font-normal">(disabled in dry-run)</span>
+					{/if}
+				</h4>
+				<p class="text-xs text-gray-500 mb-2">
+					Mutating actions on the repo. Off by default; require <strong>Mode: Apply</strong> to take effect.
+				</p>
 				<div class="space-y-1.5">
 					<label class="flex items-center gap-2 text-sm">
 						<input type="checkbox" bind:checked={featuresDraft.auto_pr} class="rounded" />
-						<span><strong>Auto-fix PR</strong> <span class="text-xs text-gray-500">— open PRs for simple bugs</span></span>
+						<span><strong>Auto-fix PR</strong> <span class="text-xs text-gray-500">— open PRs for simple bugs flagged by triage</span></span>
 					</label>
 					<label class="flex items-center gap-2 text-sm">
 						<input type="checkbox" bind:checked={featuresDraft.auto_merge} class="rounded" />
-						<span><strong>Auto-merge</strong> <span class="text-xs text-gray-500">— merge ready PRs once checks pass</span></span>
+						<span><strong>Auto-merge</strong> <span class="text-xs text-gray-500">— merge ready PRs once checks pass + queue score above threshold</span></span>
 					</label>
 				</div>
 			</div>

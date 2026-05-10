@@ -484,6 +484,11 @@ export interface RepoFeatures {
 	auto_pr: boolean;
 	auto_merge: boolean;
 	filters: RepoFilters;
+	/// Master apply-mode toggle. `true` posts to GitHub; `false` is
+	/// DRY-RUN (compute results visible in the dashboard, no writes).
+	/// Lives on `RepoEntry`, surfaced through the same endpoint for
+	/// UI symmetry. Server may include or omit it depending on version.
+	apply?: boolean;
 }
 
 export async function fetchRepoFeatures(slug: string): Promise<RepoFeatures> {

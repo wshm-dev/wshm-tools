@@ -115,7 +115,7 @@ pub async fn run(state: Arc<DaemonState>) {
         if state.config.triage.enabled && features.triage_issues {
             let args = TriageArgs {
                 issue: None,
-                apply: state.apply,
+                apply: state.apply(),
                 retriage: false,
             };
 
@@ -164,7 +164,7 @@ pub async fn run(state: Arc<DaemonState>) {
 
             let args = TriageArgs {
                 issue: None,
-                apply: state.apply,
+                apply: state.apply(),
                 retriage: true,
             };
 

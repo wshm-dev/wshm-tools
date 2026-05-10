@@ -251,11 +251,11 @@ async fn handle_issue(state: &DaemonState, event: &WebhookEvent) -> anyhow::Resu
     }
 
     // Run triage pipeline. `apply` controls whether wshm posts a triage
-    // comment on GitHub; we keep the legacy semantic (state.apply) here
+    // comment on GitHub; we keep the legacy semantic (state.apply()) here
     // because triage_issues already gated the AI run itself.
     let args = TriageArgs {
         issue: number,
-        apply: state.apply,
+        apply: state.apply(),
         retriage: false,
     };
 
@@ -367,7 +367,7 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
     // Run PR analysis pipeline
     let args = PrArgs {
         pr: number,
-        apply: state.apply,
+        apply: state.apply(),
     };
 
     pipelines::pr_analysis::run(&state.config, &state.db, &state.gh(), &args, false, None).await?;
@@ -447,13 +447,13 @@ async fn handle_comment(state: &DaemonState, event: &WebhookEvent) -> anyhow::Re
         &state.config,
         &state.db,
         &state.gh(),
-        state.apply,
+        state.apply(),
         Some(triggered_by),
     )
     .await?;
 
     // Post response as a comment
-    if state.apply {
+    if state.apply() {
         state.gh().comment_issue(number, &response).await?;
         info!("Posted slash command response on #{number}");
     } else {

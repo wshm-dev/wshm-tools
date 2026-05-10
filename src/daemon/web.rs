@@ -999,7 +999,7 @@ async fn api_status(
             unanalyzed: unanalyzed.len(),
             conflicts,
             last_sync: last_sync.clone(),
-            apply: ds.apply,
+            apply: ds.apply(),
         };
 
         resp.open_issues += repo_status.open_issues;
@@ -1936,7 +1936,7 @@ async fn api_list_repos(State(state): State<Arc<WebState>>) -> impl IntoResponse
         .map(|(slug, ds)| {
             json!({
                 "slug": slug,
-                "apply": ds.apply,
+                "apply": ds.apply(),
                 "wshm_dir": ds.config.wshm_dir.display().to_string(),
                 "features": ds.features(),
             })
@@ -1947,13 +1947,21 @@ async fn api_list_repos(State(state): State<Arc<WebState>>) -> impl IntoResponse
 }
 
 /// GET /api/v1/repos/{slug}/features -- read the per-repo feature toggles.
+/// Includes `apply` (master dry-run/apply toggle) on top of the standard
+/// RepoFeatures fields, so the Settings UI can render a single modal.
 async fn api_repo_features_get(
     State(state): State<Arc<WebState>>,
     axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> Response {
     let repos = state.multi.repos.read().await;
     match repos.get(&slug) {
-        Some(ds) => Json(json!(ds.features())).into_response(),
+        Some(ds) => {
+            let mut resp = json!(ds.features());
+            if let Some(obj) = resp.as_object_mut() {
+                obj.insert("apply".to_string(), json!(ds.apply()));
+            }
+            Json(resp).into_response()
+        }
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("repo '{slug}' not configured")})),
@@ -2018,6 +2026,14 @@ async fn api_repo_features_patch(
     // Apply to in-memory state immediately.
     ds.set_features(features.clone());
 
+    // Master apply-mode toggle. Lives on RepoEntry, not RepoFeatures, so
+    // it's patched separately. The flag flips dry-run ↔ apply at runtime
+    // without daemon restart — pipelines read `state.apply()` per request.
+    let apply_change = body.get("apply").and_then(|v| v.as_bool());
+    if let Some(new_apply) = apply_change {
+        ds.set_apply(new_apply);
+    }
+
     // Persist to global.toml so the change survives restart. Errors are
     // logged but not propagated — the in-memory state is already updated,
     // worst case the user has to re-toggle after a restart.
@@ -2027,6 +2043,9 @@ async fn api_repo_features_patch(
             for entry in &mut global.repos {
                 if entry.slug == slug {
                     entry.features = features.clone();
+                    if let Some(new_apply) = apply_change {
+                        entry.apply = Some(new_apply);
+                    }
                 }
             }
             if let Err(e) = global.save(&global_path) {
@@ -2035,7 +2054,11 @@ async fn api_repo_features_patch(
         }
     }
 
-    Json(json!(features)).into_response()
+    let mut resp = json!(features);
+    if let Some(obj) = resp.as_object_mut() {
+        obj.insert("apply".to_string(), json!(ds.apply()));
+    }
+    Json(resp).into_response()
 }
 
 /// POST /api/v1/repos -- add a repo at runtime (multi-repo mode only).
