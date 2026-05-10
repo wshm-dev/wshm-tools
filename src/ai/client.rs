@@ -229,9 +229,7 @@ fn env_key(names: &[&str]) -> Result<Zeroizing<String>> {
     if let Some(s) = crate::secrets::global() {
         for name in names {
             let store_key = name.to_ascii_lowercase();
-            if let Ok(Some(v)) =
-                s.get_blocking(crate::secrets::Scope::Global, None, &store_key)
-            {
+            if let Ok(Some(v)) = s.get_blocking(crate::secrets::Scope::Global, None, &store_key) {
                 if !v.is_empty() {
                     return Ok(Zeroizing::new(v));
                 }

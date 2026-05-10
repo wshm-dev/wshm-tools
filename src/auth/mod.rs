@@ -38,6 +38,7 @@ impl Role {
             Role::Viewer => "viewer",
         }
     }
+    #[allow(clippy::should_implement_trait)] // not infallible enough for FromStr trait shape
     pub fn from_str(s: &str) -> Result<Self> {
         match s {
             "admin" => Ok(Role::Admin),
@@ -205,13 +206,12 @@ impl UserStore {
                  last_login_at = excluded.last_login_at",
             params![email, username, provider, now, bootstrap_admin_role],
         )?;
-        let user = conn
-            .query_row(
-                "SELECT id, email, username, role, sso_provider, created_at, last_login_at
+        let user = conn.query_row(
+            "SELECT id, email, username, role, sso_provider, created_at, last_login_at
                  FROM users WHERE email = ?1",
-                params![email],
-                row_to_user,
-            )?;
+            params![email],
+            row_to_user,
+        )?;
         Ok(user)
     }
 
@@ -249,11 +249,9 @@ impl UserStore {
         // M-3 finding). Wrap in a tx so the email never disappears
         // from the DB without being recorded.
         let email: Option<String> = conn
-            .query_row(
-                "SELECT email FROM users WHERE id = ?1",
-                params![id],
-                |r| r.get(0),
-            )
+            .query_row("SELECT email FROM users WHERE id = ?1", params![id], |r| {
+                r.get(0)
+            })
             .optional()?;
         let n = conn.execute("DELETE FROM users WHERE id = ?1", params![id])?;
         if n == 0 {

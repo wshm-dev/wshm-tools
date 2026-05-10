@@ -1,7 +1,6 @@
 pub mod ai;
 pub mod auth;
 pub mod cli;
-pub mod secrets;
 pub mod config;
 pub mod daemon;
 pub mod db;
@@ -14,6 +13,7 @@ pub mod login;
 pub mod pipelines;
 pub mod pro_hooks;
 pub mod run;
+pub mod secrets;
 pub mod telemetry;
 pub mod tui;
 pub mod update;

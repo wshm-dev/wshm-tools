@@ -80,6 +80,9 @@ struct ListQuery {
     state: Option<String>,
     limit: Option<usize>,
     offset: Option<usize>,
+    /// Sort field. Default: `updated_at` (descending). Pass `score` to
+    /// rank by the issue/PR scoring algorithm (see `[scoring]` config).
+    sort: Option<String>,
 }
 
 const PAGE_DEFAULT_LIMIT: usize = 50;
@@ -93,9 +96,7 @@ fn paginate<T: serde::Serialize>(
     offset: Option<usize>,
 ) -> serde_json::Value {
     let total = items.len();
-    let limit = limit
-        .unwrap_or(PAGE_DEFAULT_LIMIT)
-        .clamp(1, PAGE_MAX_LIMIT);
+    let limit = limit.unwrap_or(PAGE_DEFAULT_LIMIT).clamp(1, PAGE_MAX_LIMIT);
     let offset = offset.unwrap_or(0).min(total);
     let slice: Vec<T> = items.into_iter().skip(offset).take(limit).collect();
     json!({
@@ -145,8 +146,8 @@ fn read_cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 fn mint_session_cookie(password: &str, ttl_secs: i64) -> (String, i64) {
     let expires_at = chrono::Utc::now().timestamp() + ttl_secs;
     let payload = expires_at.to_string();
-    let mut mac = Hmac::<Sha256>::new_from_slice(password.as_bytes())
-        .expect("HMAC accepts any key size");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(password.as_bytes()).expect("HMAC accepts any key size");
     mac.update(payload.as_bytes());
     let sig = mac.finalize().into_bytes();
     let sig_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig);
@@ -167,8 +168,8 @@ fn verify_session_cookie(password: &str, value: &str) -> bool {
     if expires_at <= chrono::Utc::now().timestamp() {
         return false;
     }
-    let mut mac = Hmac::<Sha256>::new_from_slice(password.as_bytes())
-        .expect("HMAC accepts any key size");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(password.as_bytes()).expect("HMAC accepts any key size");
     mac.update(expires_str.as_bytes());
     let expected_sig = mac.finalize().into_bytes();
     let expected_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(expected_sig);
@@ -261,10 +262,7 @@ pub fn verify_user_cookie(value: &str) -> Option<i64> {
 /// cookie first, falls back to `X-Auth-Request-Email` / `X-Forwarded-Email`
 /// (oauth2-proxy SSO), upserting the SSO row on first sight. Returns `None`
 /// when no users store is configured or the request has no usable identity.
-async fn current_user(
-    state: &Arc<WebState>,
-    headers: &HeaderMap,
-) -> Option<crate::auth::User> {
+async fn current_user(state: &Arc<WebState>, headers: &HeaderMap) -> Option<crate::auth::User> {
     let store = state.users.as_ref()?;
 
     if let Some(cookie_val) = read_cookie(headers, "wshm_session") {
@@ -319,6 +317,7 @@ async fn current_user(
 ///
 /// Public bootstrap endpoints (login, logout, license activate) are
 /// exempt — they have no authenticated state to abuse.
+#[allow(clippy::result_large_err)] // axum Response is the natural error shape here
 fn csrf_check(req: &Request<Body>) -> Result<(), Response> {
     let method = req.method();
     if !matches!(method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE") {
@@ -693,6 +692,7 @@ async fn api_auth_me(
 
 /// Helper for admin-gated handlers. Returns Err response when the request is
 /// not authenticated or the user is not an admin.
+#[allow(clippy::result_large_err)] // axum Response is the natural error shape here
 fn require_admin(
     user: &axum::Extension<Option<crate::auth::User>>,
 ) -> Result<crate::auth::User, Response> {
@@ -703,6 +703,7 @@ fn require_admin(
 /// otherwise a 401/403 response. Routes that don't require any specific
 /// minimum still go through the auth middleware so we always have an
 /// authenticated user when this helper is called.
+#[allow(clippy::result_large_err)] // axum Response is the natural error shape here
 fn require_min_role(
     user: &axum::Extension<Option<crate::auth::User>>,
     min: crate::auth::Role,
@@ -1058,6 +1059,11 @@ async fn api_issues(
 
             for issue in issues {
                 let triage = ds.db.get_triage_result(issue.number).ok().flatten();
+                let (score, score_breakdown) = crate::pipelines::pr_health::score_issue_with(
+                    &issue,
+                    triage.as_ref(),
+                    &ds.config.scoring.issue,
+                );
                 let linked = issue_prs.get(&issue.number);
                 let pr_status = match linked {
                     None => "no_pr",
@@ -1091,7 +1097,10 @@ async fn api_issues(
                     "reactions_plus1": issue.reactions_plus1,
                     "reactions_total": issue.reactions_total,
                     "priority": triage.as_ref().and_then(|t| t.priority.as_deref()),
+                    "confidence": triage.as_ref().map(|t| t.confidence),
                     "category": triage.as_ref().map(|t| t.category.as_str()),
+                    "score": score,
+                    "score_breakdown": score_breakdown,
                     "pr_status": pr_status,
                     "linked_prs": linked,
                     "url": crate::git_provider::web_url_for_issue(&ds.config, issue.number),
@@ -1100,15 +1109,28 @@ async fn api_issues(
         }
     }
 
-    all_issues.sort_by(|a, b| {
-        let ka = a["updated_at"].as_str().unwrap_or("");
-        let kb = b["updated_at"].as_str().unwrap_or("");
-        kb.cmp(ka).then_with(|| {
-            let na = a["number"].as_u64().unwrap_or(0);
-            let nb = b["number"].as_u64().unwrap_or(0);
-            nb.cmp(&na)
-        })
-    });
+    let sort_by_score = q.sort.as_deref() == Some("score");
+    if sort_by_score {
+        all_issues.sort_by(|a, b| {
+            let sa = a["score"].as_i64().unwrap_or(i64::MIN);
+            let sb = b["score"].as_i64().unwrap_or(i64::MIN);
+            sb.cmp(&sa).then_with(|| {
+                let na = a["number"].as_u64().unwrap_or(0);
+                let nb = b["number"].as_u64().unwrap_or(0);
+                nb.cmp(&na)
+            })
+        });
+    } else {
+        all_issues.sort_by(|a, b| {
+            let ka = a["updated_at"].as_str().unwrap_or("");
+            let kb = b["updated_at"].as_str().unwrap_or("");
+            kb.cmp(ka).then_with(|| {
+                let na = a["number"].as_u64().unwrap_or(0);
+                let nb = b["number"].as_u64().unwrap_or(0);
+                nb.cmp(&na)
+            })
+        });
+    }
 
     Json(paginate(all_issues, q.limit, q.offset))
 }
@@ -1988,9 +2010,7 @@ async fn api_repo_features_patch(
 
     // Filters: full replace if a `filters` object is in the body.
     if let Some(f_body) = body.get("filters") {
-        if let Ok(parsed) =
-            serde_json::from_value::<crate::config::RepoFilters>(f_body.clone())
-        {
+        if let Ok(parsed) = serde_json::from_value::<crate::config::RepoFilters>(f_body.clone()) {
             features.filters = parsed;
         }
     }
@@ -2167,13 +2187,17 @@ async fn api_summary(
     let high_risk_prs: Vec<_> = prs
         .iter()
         .filter_map(|p| {
-            ds.db.get_pr_analysis(p.number).ok().flatten().and_then(|a| {
-                if a.risk_level == "high" || a.risk_level == "critical" {
-                    Some(to_pr_brief(p, Some(a.risk_level)))
-                } else {
-                    None
-                }
-            })
+            ds.db
+                .get_pr_analysis(p.number)
+                .ok()
+                .flatten()
+                .and_then(|a| {
+                    if a.risk_level == "high" || a.risk_level == "critical" {
+                        Some(to_pr_brief(p, Some(a.risk_level)))
+                    } else {
+                        None
+                    }
+                })
         })
         .take(5)
         .collect();
@@ -2221,9 +2245,7 @@ async fn api_auth_status(State(state): State<Arc<WebState>>) -> impl IntoRespons
 
     let secrets_has = |key: &str| -> bool {
         if let Some(store) = state.secrets.as_ref() {
-            if let Ok(Some(v)) =
-                store.get_blocking(crate::secrets::Scope::Global, None, key)
-            {
+            if let Ok(Some(v)) = store.get_blocking(crate::secrets::Scope::Global, None, key) {
                 return !v.is_empty();
             }
         }
@@ -2413,10 +2435,7 @@ async fn api_auth_anthropic(
                 .into_response();
         }
     };
-    let kind = body
-        .get("kind")
-        .and_then(|v| v.as_str())
-        .unwrap_or("oauth");
+    let kind = body.get("kind").and_then(|v| v.as_str()).unwrap_or("oauth");
 
     let (env_key, secret_key, other_env, other_secret) = match kind {
         "oauth" => (
@@ -2667,9 +2686,7 @@ async fn api_secrets_put(
         )
             .into_response();
     }
-    if scope == crate::secrets::Scope::Repo
-        && slug.map(str::trim).is_none_or(|s| s.is_empty())
-    {
+    if scope == crate::secrets::Scope::Repo && slug.map(str::trim).is_none_or(|s| s.is_empty()) {
         tracing::warn!(
             target: "wshm_core::secrets_trace",
             "api_secrets_put: validation FAILED — Repo scope requires non-empty slug"
@@ -2736,11 +2753,7 @@ async fn api_secrets_put(
 /// matches the secret that was just written or removed. Errors are logged
 /// but never propagate — a failed reload doesn't mean the secret write
 /// itself failed.
-async fn reload_github_clients(
-    state: &WebState,
-    scope: crate::secrets::Scope,
-    slug: Option<&str>,
-) {
+async fn reload_github_clients(state: &WebState, scope: crate::secrets::Scope, slug: Option<&str>) {
     let repos_guard = state.multi.repos.read().await;
     tracing::debug!(
         target: "wshm_core::secrets_trace",
@@ -2792,11 +2805,7 @@ async fn api_secrets_reveal(
     };
     match store.reveal(id, Some(admin.id)).await {
         Ok(Some(v)) => Json(json!({ "value": v })).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "not found"})),
-        )
-            .into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(json!({"error": "not found"}))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": format!("{e}")})),
@@ -2938,8 +2947,14 @@ pub fn oss_api_routes() -> Router<Arc<WebState>> {
             axum::routing::patch(api_users_update).delete(api_users_delete),
         )
         .route("/api/v1/logs", get(api_logs))
-        .route("/api/v1/secrets", get(api_secrets_list).post(api_secrets_put))
-        .route("/api/v1/secrets/{id}", axum::routing::delete(api_secrets_delete))
+        .route(
+            "/api/v1/secrets",
+            get(api_secrets_list).post(api_secrets_put),
+        )
+        .route(
+            "/api/v1/secrets/{id}",
+            axum::routing::delete(api_secrets_delete),
+        )
         .route("/api/v1/secrets/{id}/reveal", post(api_secrets_reveal))
         .route("/api/v1/summary", get(api_summary))
 }

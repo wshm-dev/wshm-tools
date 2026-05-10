@@ -34,9 +34,7 @@ impl Client {
                  Add a token in Settings → Secrets for full functionality."
             );
         }
-        let octocrab = builder
-            .build()
-            .context("Failed to create GitHub client")?;
+        let octocrab = builder.build().context("Failed to create GitHub client")?;
 
         let http = reqwest::Client::builder()
             .user_agent("wshm")

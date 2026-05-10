@@ -303,7 +303,8 @@ fn check_replay(delivery_id: &str) -> Result<(), ()> {
     if delivery_id.is_empty() {
         return Ok(());
     }
-    let cache = REPLAY_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let cache =
+        REPLAY_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     let Ok(mut map) = cache.lock() else {
         return Ok(()); // poisoned mutex — fail open
     };

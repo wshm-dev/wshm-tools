@@ -32,10 +32,7 @@ fn load_last_event_id(state: &DaemonState) -> Option<String> {
 
 fn store_last_event_id(state: &DaemonState, id: &str) {
     let now = chrono::Utc::now().to_rfc3339();
-    if let Err(e) = state
-        .db
-        .update_sync_entry(POLLER_SYNC_KEY, &now, Some(id))
-    {
+    if let Err(e) = state.db.update_sync_entry(POLLER_SYNC_KEY, &now, Some(id)) {
         warn!("Failed to persist poller last_event_id: {e}");
     }
 }

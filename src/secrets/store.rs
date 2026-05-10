@@ -83,8 +83,8 @@ impl SqliteSecretStore {
                 let aad_legacy = aad_for_legacy(scope.as_str(), slug, key);
                 let plaintext =
                     cipher.open_with_aads(&nonce, &ciphertext, &[&aad_new, &aad_legacy])?;
-                let s = String::from_utf8(plaintext)
-                    .context("decrypted secret is not valid UTF-8")?;
+                let s =
+                    String::from_utf8(plaintext).context("decrypted secret is not valid UTF-8")?;
                 Ok(Some(s))
             }
             None => Ok(None),
@@ -138,7 +138,15 @@ impl SecretStore for SqliteSecretStore {
                  ciphertext = excluded.ciphertext,
                  updated_at = excluded.updated_at,
                  updated_by = excluded.updated_by",
-            params![scope.as_str(), slug, key, nonce, ciphertext, now, updated_by],
+            params![
+                scope.as_str(),
+                slug,
+                key,
+                nonce,
+                ciphertext,
+                now,
+                updated_by
+            ],
         )?;
         // Best-effort audit row.
         let _ = conn.execute(
@@ -158,12 +166,7 @@ impl SecretStore for SqliteSecretStore {
     /// Synchronous variant of `get` — usable from non-async code
     /// (scheduler/poller). Uses a separate connection so it does not
     /// contend with the async writers.
-    fn get_blocking(
-        &self,
-        scope: Scope,
-        slug: Option<&str>,
-        key: &str,
-    ) -> Result<Option<String>> {
+    fn get_blocking(&self, scope: Scope, slug: Option<&str>, key: &str) -> Result<Option<String>> {
         let conn = self
             .sync_conn
             .lock()

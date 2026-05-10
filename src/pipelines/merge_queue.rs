@@ -99,8 +99,8 @@ pub async fn run(
     Ok(())
 }
 
-fn score_pr(pr: &PullRequest, _config: &Config) -> ScoredPr {
-    let (score, breakdown) = super::pr_health::score_pr(pr);
+fn score_pr(pr: &PullRequest, config: &Config) -> ScoredPr {
+    let (score, breakdown) = super::pr_health::score_pr_with(pr, &config.scoring.pr);
     ScoredPr {
         pr: pr.clone(),
         score,

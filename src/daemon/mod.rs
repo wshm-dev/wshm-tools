@@ -41,12 +41,7 @@ pub struct DaemonState {
 }
 
 impl DaemonState {
-    pub fn new(
-        db: Arc<Database>,
-        gh: Arc<GhClient>,
-        config: Arc<Config>,
-        apply: bool,
-    ) -> Self {
+    pub fn new(db: Arc<Database>, gh: Arc<GhClient>, config: Arc<Config>, apply: bool) -> Self {
         // Legacy `apply: true` upgrades the triage/analyze/auto_pr trio so
         // existing setups keep behaving the same after this migration.
         let mut features = crate::config::RepoFeatures::default();
@@ -88,8 +83,16 @@ impl DaemonState {
         info!(
             "[{}] GitHub client reloaded ({} → {})",
             self.config.repo_slug(),
-            if was_authenticated { "authenticated" } else { "anonymous" },
-            if now_authenticated { "authenticated" } else { "anonymous" }
+            if was_authenticated {
+                "authenticated"
+            } else {
+                "anonymous"
+            },
+            if now_authenticated {
+                "authenticated"
+            } else {
+                "anonymous"
+            }
         );
         Ok(())
     }
@@ -105,10 +108,7 @@ impl DaemonState {
     /// Replace the in-memory feature flags. The API handler is responsible
     /// for also persisting them to global.toml so they survive restart.
     pub fn set_features(&self, new: crate::config::RepoFeatures) {
-        *self
-            .features
-            .write()
-            .expect("features RwLock poisoned") = new;
+        *self.features.write().expect("features RwLock poisoned") = new;
     }
 }
 
@@ -138,10 +138,7 @@ impl MultiDaemonState {
         }
     }
 
-    pub fn with_runtime(
-        repos: HashMap<String, Arc<DaemonState>>,
-        runtime: DynamicRuntime,
-    ) -> Self {
+    pub fn with_runtime(repos: HashMap<String, Arc<DaemonState>>, runtime: DynamicRuntime) -> Self {
         Self {
             repos: RwLock::new(repos),
             runtime: Some(runtime),
@@ -153,11 +150,7 @@ impl MultiDaemonState {
     /// on the slug — returns error if it already exists.
     /// When `path` is None, defaults to `<global_config_parent>/repos/<name>`
     /// so dynamic adds land on the same volume as the daemon's config.
-    pub async fn add_repo(
-        &self,
-        slug: &str,
-        path: Option<PathBuf>,
-    ) -> Result<Arc<DaemonState>> {
+    pub async fn add_repo(&self, slug: &str, path: Option<PathBuf>) -> Result<Arc<DaemonState>> {
         let runtime = self
             .runtime
             .as_ref()
@@ -190,17 +183,17 @@ impl MultiDaemonState {
 
         let db = Arc::new(Database::open(&config)?);
         let gh = Arc::new(GhClient::new(&config)?);
-        let state = Arc::new(DaemonState::new(db, gh, Arc::new(config), runtime.global_apply));
+        let state = Arc::new(DaemonState::new(
+            db,
+            gh,
+            Arc::new(config),
+            runtime.global_apply,
+        ));
 
         // Persist before mutating runtime state so a crash can't lose the
         // user's intent silently.
-        crate::config::append_repo_to_global(
-            &runtime.global_config_path,
-            slug,
-            &path,
-            None,
-        )
-        .with_context(|| format!("failed to persist {slug} to global config"))?;
+        crate::config::append_repo_to_global(&runtime.global_config_path, slug, &path, None)
+            .with_context(|| format!("failed to persist {slug} to global config"))?;
 
         {
             let mut repos = self.repos.write().await;
