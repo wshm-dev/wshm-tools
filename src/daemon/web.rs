@@ -1190,81 +1190,6 @@ async fn api_pulls(
     Json(paginate(all_prs, q.limit, q.offset))
 }
 
-/// GET /api/v1/pr-insights -- Pro: aggregate dashboard for open PRs.
-///
-/// Returns every open PR across configured repos, each tagged with a
-/// `status` (`mergeable` / `conflict` / `unknown`, derived from the
-/// `mergeable` flag), plus `default_branches`: the set of per-repo
-/// `[fix].base_branch` values. The SPA derives counts and charts from
-/// this; surfacing the default branches lets the UI highlight them in
-/// the target-branch breakdown rather than hard-coding `master`/`develop`.
-///
-/// Pro-gated: OSS builds return 403.
-async fn api_pr_insights(
-    State(state): State<Arc<WebState>>,
-    Query(q): Query<ListQuery>,
-) -> Response {
-    if !crate::pro_hooks::is_pro() {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": "pr-insights is a Pro feature"})),
-        )
-            .into_response();
-    }
-
-    let mut items = Vec::new();
-    let mut default_branches: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-
-    let __repos_guard = state.multi.repos.read().await;
-    for (slug, ds) in __repos_guard.iter() {
-        if let Some(ref f) = q.repo {
-            if f != slug {
-                continue;
-            }
-        }
-        default_branches.insert(ds.config.fix.base_branch.clone());
-        if let Ok(prs) = ds.db.get_open_pulls() {
-            for pr in prs {
-                let analysis = ds.db.get_pr_analysis(pr.number).ok().flatten();
-                let status = match pr.mergeable {
-                    Some(true) => "mergeable",
-                    Some(false) => "conflict",
-                    None => "unknown",
-                };
-                items.push(json!({
-                    "repo": slug,
-                    "number": pr.number,
-                    "title": pr.title,
-                    "author": pr.author,
-                    "head_ref": pr.head_ref,
-                    "base_ref": pr.base_ref,
-                    "mergeable": pr.mergeable,
-                    "status": status,
-                    "ci_status": pr.ci_status,
-                    "risk_level": analysis.as_ref().map(|a| a.risk_level.as_str()),
-                    "summary": analysis.as_ref().map(|a| a.summary.as_str()),
-                    "created_at": pr.created_at,
-                    "updated_at": pr.updated_at,
-                    "url": crate::git_provider::web_url_for_pr(&ds.config, pr.number),
-                }));
-            }
-        }
-    }
-    drop(__repos_guard);
-
-    items.sort_by(|a, b| {
-        let ka = a["updated_at"].as_str().unwrap_or("");
-        let kb = b["updated_at"].as_str().unwrap_or("");
-        kb.cmp(ka)
-    });
-
-    Json(json!({
-        "items": items,
-        "default_branches": default_branches.into_iter().collect::<Vec<_>>(),
-    }))
-    .into_response()
-}
-
 /// GET /api/v1/triage -- recent triage results.
 /// Paginated: returns `{items, total, limit, offset}` sorted by `acted_at` desc.
 async fn api_triage(
@@ -3014,7 +2939,6 @@ pub fn oss_api_routes() -> Router<Arc<WebState>> {
         .route("/api/v1/status", get(api_status))
         .route("/api/v1/issues", get(api_issues))
         .route("/api/v1/pulls", get(api_pulls))
-        .route("/api/v1/pr-insights", get(api_pr_insights))
         .route("/api/v1/triage", get(api_triage))
         .route("/api/v1/queue", get(api_queue))
         .route("/api/v1/activity", get(api_activity))

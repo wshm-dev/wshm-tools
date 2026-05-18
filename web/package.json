@@ -20,7 +20,6 @@
   "type": "module",
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
-    "chart.js": "^4.5.1",
     "flowbite": "^4.0.1",
     "flowbite-svelte": "^1.33.0",
     "tailwindcss": "^4.2.2"

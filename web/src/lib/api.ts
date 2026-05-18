@@ -97,41 +97,6 @@ export interface PullRequest {
 	updated_at: string;
 }
 
-// ---------------------------------------------------------------------------
-// PR Insights (Pro feature, gated by license.features `pr-insights`)
-// ---------------------------------------------------------------------------
-
-/** A single open PR as returned by the PR insights endpoint. */
-export interface PrInsightItem {
-	repo: string;
-	number: number;
-	title: string;
-	author: string | null;
-	head_ref: string | null;
-	base_ref: string | null;
-	/** GitHub mergeability: true = mergeable, false = conflict, null = pending. */
-	mergeable: boolean | null;
-	/** Derived bucket: 'mergeable' | 'conflict' | 'unknown'. */
-	status: 'mergeable' | 'conflict' | 'unknown';
-	ci_status: string | null;
-	risk_level: string | null;
-	summary: string | null;
-	created_at: string;
-	updated_at: string;
-	url?: string | null;
-}
-
-export interface PrInsights {
-	items: PrInsightItem[];
-	/** Per-repo `[fix].base_branch` values — the branches the UI highlights
-	 *  as "default" in the target-branch breakdown. */
-	default_branches: string[];
-}
-
-export function fetchPrInsights(): Promise<PrInsights> {
-	return apiGet<PrInsights>('/pr-insights');
-}
-
 export interface TriageResult {
 	repo: string;
 	issue_number: number;
