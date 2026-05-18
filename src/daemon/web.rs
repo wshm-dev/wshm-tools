@@ -1800,6 +1800,10 @@ async fn api_license() -> impl IntoResponse {
         // the feature too — re-activation just adds the explicit
         // entry, no behavior change.
         ("search", "Global full-text search", is_pro),
+        // PR Insights is a Pro-only feature: its route and page live
+        // in wshm-pro, not here. Declared in this list so the SPA can
+        // gate the sidebar entry; `is_pro` is the enabled flag.
+        ("pr-insights", "PR insights dashboard", is_pro),
     ];
 
     let features: Vec<serde_json::Value> = pro_features
