@@ -279,5 +279,12 @@
 	"prInsights.modal.created": "Créée le",
 	"prInsights.modal.summary": "Résumé IA",
 	"prInsights.modal.noSummary": "Pas encore analysée",
-	"prInsights.modal.openOnForge": "Ouvrir sur la forge"
+	"prInsights.modal.openOnForge": "Ouvrir sur la forge",
+	"prInsights.tab.trend": "Tendance",
+	"prInsights.trend.title": "PRs ouvertes dans le temps",
+	"prInsights.trend.subtitle": "Snapshots quotidiens — l'historique se remplit à partir de la première consultation du dashboard",
+	"prInsights.trend.empty": "Pas encore d'historique — un point est enregistré chaque jour où le dashboard est consulté",
+	"prInsights.trend.open": "Ouvertes",
+	"prInsights.trend.conflict": "En conflit",
+	"prInsights.trend.mergeable": "Mergeable"
 }
