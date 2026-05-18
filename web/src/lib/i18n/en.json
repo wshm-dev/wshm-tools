@@ -267,5 +267,17 @@
 	"prInsights.table.ci": "CI",
 	"prInsights.table.risk": "Risk",
 	"prInsights.allBranches": "All branches",
-	"prInsights.defaultBadge": "default"
+	"prInsights.defaultBadge": "default",
+	"prInsights.chart.staleness": "Staleness (by last activity)",
+	"prInsights.age.lt1w": "< 1 week",
+	"prInsights.age.1to4w": "1–4 weeks",
+	"prInsights.age.1to3m": "1–3 months",
+	"prInsights.age.gt3m": "> 3 months",
+	"prInsights.modal.status": "Status",
+	"prInsights.modal.branches": "Branch",
+	"prInsights.modal.lastActivity": "Last activity",
+	"prInsights.modal.created": "Created",
+	"prInsights.modal.summary": "AI summary",
+	"prInsights.modal.noSummary": "Not analyzed yet",
+	"prInsights.modal.openOnForge": "Open on the forge"
 }

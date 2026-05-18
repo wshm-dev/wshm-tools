@@ -267,5 +267,17 @@
 	"prInsights.table.ci": "CI",
 	"prInsights.table.risk": "Risque",
 	"prInsights.allBranches": "Toutes les branches",
-	"prInsights.defaultBadge": "défaut"
+	"prInsights.defaultBadge": "défaut",
+	"prInsights.chart.staleness": "Ancienneté (dernière activité)",
+	"prInsights.age.lt1w": "< 1 semaine",
+	"prInsights.age.1to4w": "1–4 semaines",
+	"prInsights.age.1to3m": "1–3 mois",
+	"prInsights.age.gt3m": "> 3 mois",
+	"prInsights.modal.status": "Statut",
+	"prInsights.modal.branches": "Branche",
+	"prInsights.modal.lastActivity": "Dernière activité",
+	"prInsights.modal.created": "Créée le",
+	"prInsights.modal.summary": "Résumé IA",
+	"prInsights.modal.noSummary": "Pas encore analysée",
+	"prInsights.modal.openOnForge": "Ouvrir sur la forge"
 }
