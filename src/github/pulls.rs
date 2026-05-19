@@ -28,17 +28,18 @@ impl Client {
                 self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
 
-            let response = self
-                .octocrab
-                ._get(&url)
-                .await
-                .context("Failed to fetch closed pull requests")?;
-
-            let body = self
-                .octocrab
-                .body_to_string(response)
-                .await
-                .context("Failed to read closed pulls response body")?;
+            let body = crate::retry::with_retry("github: list closed PRs", || async {
+                let response = self
+                    .octocrab
+                    ._get(&url)
+                    .await
+                    .context("Failed to fetch closed pull requests")?;
+                self.octocrab
+                    .body_to_string(response)
+                    .await
+                    .context("Failed to read closed pulls response body")
+            })
+            .await?;
 
             let items = super::parse_json_array(&body, "closed pulls")?;
 
@@ -113,17 +114,18 @@ impl Client {
                 self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
 
-            let response = self
-                .octocrab
-                ._get(&url)
-                .await
-                .context("Failed to fetch pull requests")?;
-
-            let body = self
-                .octocrab
-                .body_to_string(response)
-                .await
-                .context("Failed to read pulls response body")?;
+            let body = crate::retry::with_retry("github: list PRs", || async {
+                let response = self
+                    .octocrab
+                    ._get(&url)
+                    .await
+                    .context("Failed to fetch pull requests")?;
+                self.octocrab
+                    .body_to_string(response)
+                    .await
+                    .context("Failed to read pulls response body")
+            })
+            .await?;
 
             let items = super::parse_json_array(&body, "pulls")?;
 
@@ -195,17 +197,18 @@ impl Client {
             "https://api.github.com/repos/{}/{}/pulls/{number}",
             self.owner, self.repo
         );
-        let response = self
-            .octocrab
-            ._get(&url)
-            .await
-            .with_context(|| format!("Failed to fetch PR #{number} details"))?;
-
-        let body = self
-            .octocrab
-            .body_to_string(response)
-            .await
-            .with_context(|| format!("Failed to read PR #{number} body"))?;
+        let body = crate::retry::with_retry("github: fetch PR mergeable", || async {
+            let response = self
+                .octocrab
+                ._get(&url)
+                .await
+                .with_context(|| format!("Failed to fetch PR #{number} details"))?;
+            self.octocrab
+                .body_to_string(response)
+                .await
+                .with_context(|| format!("Failed to read PR #{number} body"))
+        })
+        .await?;
 
         let pr_json: serde_json::Value =
             serde_json::from_str(&body).context("Failed to parse PR JSON")?;
@@ -226,24 +229,26 @@ impl Client {
             self.owner, self.repo
         );
 
-        let response = self
-            .http
-            .get(&url)
-            .send()
-            .await
-            .with_context(|| format!("Failed to fetch raw diff for PR #{number}"))?;
+        crate::retry::with_retry("github: fetch PR diff", || async {
+            let response = self
+                .http
+                .get(&url)
+                .send()
+                .await
+                .with_context(|| format!("Failed to fetch raw diff for PR #{number}"))?;
 
-        let status = response.status();
-        let text = response
-            .text()
-            .await
-            .with_context(|| format!("Failed to read raw diff for PR #{number}"))?;
+            let status = response.status();
+            let text = response
+                .text()
+                .await
+                .with_context(|| format!("Failed to read raw diff for PR #{number}"))?;
 
-        if !status.is_success() {
-            anyhow::bail!("Failed to fetch diff for PR #{number}: HTTP {status}");
-        }
-
-        Ok(text)
+            if !status.is_success() {
+                anyhow::bail!("Failed to fetch diff for PR #{number}: HTTP {status}");
+            }
+            Ok(text)
+        })
+        .await
     }
 
     /// Submit a review with inline comments on a PR
@@ -277,19 +282,21 @@ impl Client {
             self.owner, self.repo
         );
 
-        let response = self
-            .octocrab
-            ._post(&url, Some(&review_body))
-            .await
-            .with_context(|| format!("Failed to submit review on PR #{number}"))?;
+        crate::retry::with_retry("github: submit review", || async {
+            let response = self
+                .octocrab
+                ._post(&url, Some(&review_body))
+                .await
+                .with_context(|| format!("Failed to submit review on PR #{number}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body = self.octocrab.body_to_string(response).await?;
-            anyhow::bail!("Failed to submit review on PR #{number}: {status} {body}");
-        }
-
-        Ok(())
+            let status = response.status();
+            if !status.is_success() {
+                let body = self.octocrab.body_to_string(response).await?;
+                anyhow::bail!("Failed to submit review on PR #{number}: {status} {body}");
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
     }
 
     /// Create a new pull request, returns the PR number
@@ -306,17 +313,18 @@ impl Client {
             self.owner, self.repo
         );
 
-        let response = self
-            .octocrab
-            ._post(&url, Some(&pr_body))
-            .await
-            .context("Failed to create pull request")?;
-
-        let response_body = self
-            .octocrab
-            .body_to_string(response)
-            .await
-            .context("Failed to read create PR response")?;
+        let response_body = crate::retry::with_retry("github: create PR", || async {
+            let response = self
+                .octocrab
+                ._post(&url, Some(&pr_body))
+                .await
+                .context("Failed to create pull request")?;
+            self.octocrab
+                .body_to_string(response)
+                .await
+                .context("Failed to read create PR response")
+        })
+        .await?;
 
         let pr_json: serde_json::Value =
             serde_json::from_str(&response_body).context("Failed to parse create PR response")?;
@@ -329,12 +337,15 @@ impl Client {
     }
 
     pub async fn label_pr(&self, number: u64, labels: &[String]) -> Result<()> {
-        self.octocrab
-            .issues(&self.owner, &self.repo)
-            .add_labels(number, labels)
-            .await
-            .with_context(|| format!("Failed to label PR #{number}"))?;
-        Ok(())
+        crate::retry::with_retry("github: label PR", || async {
+            self.octocrab
+                .issues(&self.owner, &self.repo)
+                .add_labels(number, labels)
+                .await
+                .with_context(|| format!("Failed to label PR #{number}"))?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
     }
 
     /// Post or update a wshm comment on a PR.

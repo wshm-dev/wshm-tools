@@ -2065,6 +2065,57 @@ async fn api_repo_features_patch(
     Json(resp).into_response()
 }
 
+/// GET /api/v1/config/retry -- read the live HTTP retry policy.
+async fn api_retry_get() -> Response {
+    Json(crate::retry::global()).into_response()
+}
+
+/// PATCH /api/v1/config/retry -- update the HTTP retry policy. Body is a
+/// partial RetryConfig JSON (any subset of fields). Applies live without a
+/// daemon restart and persists to ~/.wshm/global.toml.
+async fn api_retry_patch(
+    State(state): State<Arc<WebState>>,
+    user: axum::Extension<Option<crate::auth::User>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    if state.users.is_some() {
+        if let Err(e) = require_admin(&user) {
+            return e;
+        }
+    }
+
+    // Merge the partial body over the current live policy.
+    let mut cfg = crate::retry::global();
+    if let Some(v) = body.get("enabled").and_then(|v| v.as_bool()) {
+        cfg.enabled = v;
+    }
+    if let Some(v) = body.get("max_attempts").and_then(|v| v.as_u64()) {
+        cfg.max_attempts = v as u32;
+    }
+    if let Some(v) = body.get("initial_backoff_ms").and_then(|v| v.as_u64()) {
+        cfg.initial_backoff_ms = v;
+    }
+    if let Some(v) = body.get("max_backoff_ms").and_then(|v| v.as_u64()) {
+        cfg.max_backoff_ms = v;
+    }
+    // sanitized() clamps to safe ranges so a bad entry can't wedge retries.
+    let cfg = cfg.sanitized();
+
+    // Apply live, then persist so the policy survives a restart.
+    crate::retry::set_global(cfg.clone());
+    let global_path = crate::config::GlobalConfig::default_path();
+    if global_path.exists() {
+        if let Ok(mut global) = crate::config::GlobalConfig::load(&global_path) {
+            global.retry = cfg.clone();
+            if let Err(e) = global.save(&global_path) {
+                tracing::warn!("Failed to persist retry config to global.toml: {e}");
+            }
+        }
+    }
+
+    Json(cfg).into_response()
+}
+
 /// POST /api/v1/repos -- add a repo at runtime (multi-repo mode only).
 /// Body: {"slug": "owner/repo", "path": "/optional/abs/path"}
 /// Requires `admin` role.
@@ -2952,6 +3003,10 @@ pub fn oss_api_routes() -> Router<Arc<WebState>> {
         .route("/api/v1/license", get(api_license))
         .route("/api/v1/license/activate", post(api_license_activate))
         .route("/api/v1/repos", get(api_list_repos).post(api_add_repo))
+        .route(
+            "/api/v1/config/retry",
+            get(api_retry_get).patch(api_retry_patch),
+        )
         .route(
             "/api/v1/repos/{slug}/features",
             get(api_repo_features_get).patch(api_repo_features_patch),

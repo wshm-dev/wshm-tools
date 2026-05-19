@@ -74,6 +74,7 @@
 	"settings.tabs.license": "License",
 	"settings.tabs.appearance": "Appearance",
 	"settings.tabs.configuration": "Configuration",
+	"settings.tabs.reliability": "Reliability",
 	"settings.tabs.secrets": "Secrets",
 	"settings.tabs.users": "Users",
 
@@ -161,6 +162,18 @@
 	"settings.config.section.prAnalysis": "PR Analysis",
 	"settings.config.section.mergeQueue": "Merge Queue",
 	"settings.config.section.sync": "Sync",
+
+	"settings.retry.title": "HTTP retry policy",
+	"settings.retry.helper": "How wshm retries transient network failures — dropped connections, timeouts, server 5xx / 429 — on every outbound call: the poller, git providers, AI, and self-update. Changes apply immediately, no restart needed.",
+	"settings.retry.enabled": "Enable retries",
+	"settings.retry.maxAttempts": "Max attempts",
+	"settings.retry.maxAttemptsHelp": "Total tries including the first one (1–10).",
+	"settings.retry.initialBackoff": "Initial backoff (ms)",
+	"settings.retry.initialBackoffHelp": "Delay before the first retry; doubles on each attempt.",
+	"settings.retry.maxBackoff": "Max backoff (ms)",
+	"settings.retry.maxBackoffHelp": "Upper bound on any single retry delay.",
+	"settings.retry.save": "Save retry policy",
+	"settings.retry.saved": "Retry policy saved.",
 
 	"settings.secrets.banner.title": "Advanced encrypted secrets store.",
 	"settings.secrets.banner.body": "For your GitHub token, use Git providers; for Anthropic / OpenAI / Gemini API keys, use AI providers. This tab is for additional secrets (per-repo overrides, custom integrations) stored encrypted alongside the token store.",

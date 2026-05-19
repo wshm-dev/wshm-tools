@@ -12,6 +12,7 @@ pub mod license;
 pub mod login;
 pub mod pipelines;
 pub mod pro_hooks;
+pub mod retry;
 pub mod run;
 pub mod secrets;
 pub mod telemetry;

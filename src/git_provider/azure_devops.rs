@@ -72,60 +72,69 @@ impl AzureDevOpsProvider {
     }
 
     async fn get(&self, url: &str) -> Result<serde_json::Value> {
-        let resp = self
-            .http
-            .get(url)
-            .basic_auth("", Some(&self.token))
-            .send()
-            .await
-            .context("Azure DevOps GET")?;
-        let status = resp.status();
-        let text = resp.text().await?;
-        if !status.is_success() {
-            anyhow::bail!(
-                "Azure DevOps API error ({status}): {}",
-                &text[..text.len().min(200)]
-            );
-        }
-        Ok(serde_json::from_str(&text)?)
+        crate::retry::with_retry("Azure DevOps GET", || async {
+            let resp = self
+                .http
+                .get(url)
+                .basic_auth("", Some(&self.token))
+                .send()
+                .await
+                .context("Azure DevOps GET")?;
+            let status = resp.status();
+            let text = resp.text().await?;
+            if !status.is_success() {
+                anyhow::bail!(
+                    "Azure DevOps API error ({status}): {}",
+                    &text[..text.len().min(200)]
+                );
+            }
+            Ok(serde_json::from_str(&text)?)
+        })
+        .await
     }
 
     async fn post(&self, url: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
-        let resp = self
-            .http
-            .post(url)
-            .basic_auth("", Some(&self.token))
-            .json(body)
-            .send()
-            .await?;
-        let status = resp.status();
-        let text = resp.text().await?;
-        if !status.is_success() {
-            anyhow::bail!(
-                "Azure DevOps API error ({status}): {}",
-                &text[..text.len().min(200)]
-            );
-        }
-        Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::Null))
+        crate::retry::with_retry("Azure DevOps POST", || async {
+            let resp = self
+                .http
+                .post(url)
+                .basic_auth("", Some(&self.token))
+                .json(body)
+                .send()
+                .await?;
+            let status = resp.status();
+            let text = resp.text().await?;
+            if !status.is_success() {
+                anyhow::bail!(
+                    "Azure DevOps API error ({status}): {}",
+                    &text[..text.len().min(200)]
+                );
+            }
+            Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::Null))
+        })
+        .await
     }
 
     async fn patch(&self, url: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
-        let resp = self
-            .http
-            .patch(url)
-            .basic_auth("", Some(&self.token))
-            .json(body)
-            .send()
-            .await?;
-        let status = resp.status();
-        let text = resp.text().await?;
-        if !status.is_success() {
-            anyhow::bail!(
-                "Azure DevOps API error ({status}): {}",
-                &text[..text.len().min(200)]
-            );
-        }
-        Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::Null))
+        crate::retry::with_retry("Azure DevOps PATCH", || async {
+            let resp = self
+                .http
+                .patch(url)
+                .basic_auth("", Some(&self.token))
+                .json(body)
+                .send()
+                .await?;
+            let status = resp.status();
+            let text = resp.text().await?;
+            if !status.is_success() {
+                anyhow::bail!(
+                    "Azure DevOps API error ({status}): {}",
+                    &text[..text.len().min(200)]
+                );
+            }
+            Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::Null))
+        })
+        .await
     }
 }
 

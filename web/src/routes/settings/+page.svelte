@@ -20,6 +20,7 @@
 		TableBodyCell,
 		Modal,
 		Tooltip,
+		Toggle,
 	} from 'flowbite-svelte';
 	import { colorConfig, type ColorConfig } from '$lib/colors';
 	import { t, tr } from '$lib/i18n';
@@ -46,7 +47,10 @@
 		deleteUser,
 		fetchRepoFeatures,
 		updateRepoFeatures,
+		fetchRetrySettings,
+		updateRetrySettings,
 		type RepoFeatures,
+		type RetrySettings,
 		type LicenseInfo,
 		type ReposListResponse,
 		type AuthStatus,
@@ -439,8 +443,30 @@
 		activating = false;
 	}
 
+	// Retry policy (Reliability tab)
+	let retrySettings: RetrySettings | null = $state(null);
+	let savingRetry: boolean = $state(false);
+	let retryMessage: string | null = $state(null);
+	let retryError: boolean = $state(false);
+
+	async function handleSaveRetry() {
+		if (!retrySettings) return;
+		savingRetry = true;
+		retryMessage = null;
+		try {
+			retrySettings = await updateRetrySettings(retrySettings);
+			retryError = false;
+			retryMessage = translate('settings.retry.saved');
+		} catch (e) {
+			retryError = true;
+			retryMessage = e instanceof Error ? e.message : String(e);
+		}
+		savingRetry = false;
+	}
+
 	onMount(async () => {
 		try { license = await fetchLicense(); } catch { /* ignore */ }
+		try { retrySettings = await fetchRetrySettings(); } catch { /* ignore */ }
 		await refreshRepos();
 		await refreshAuth();
 		await refreshSecrets();
@@ -801,6 +827,53 @@
 				{/each}
 			</div>
 		</Card>
+	</TabItem>
+
+	<!-- ========================= RELIABILITY ========================= -->
+	<TabItem title={$t('settings.tabs.reliability')}>
+		<div class="w-full">
+			<Card class="bg-gray-800 border-gray-700 max-w-none">
+				<Heading tag="h3" class="text-base mb-1">{$t('settings.retry.title')}</Heading>
+				<Helper class="mb-4">{$t('settings.retry.helper')}</Helper>
+
+				{#if retrySettings}
+					{#if retryMessage}
+						<Alert color={retryError ? 'red' : 'green'} class="text-xs py-2 mb-3">{retryMessage}</Alert>
+					{/if}
+
+					<form onsubmit={(e) => { e.preventDefault(); handleSaveRetry(); }} class="space-y-4 max-w-md">
+						<div class="flex items-center justify-between">
+							<Label class="text-xs">{$t('settings.retry.enabled')}</Label>
+							<Toggle bind:checked={retrySettings.enabled} disabled={savingRetry} />
+						</div>
+
+						<div>
+							<Label for="retry-attempts" class="text-xs mb-1">{$t('settings.retry.maxAttempts')}</Label>
+							<Input id="retry-attempts" type="number" min="1" max="10" bind:value={retrySettings.max_attempts} disabled={savingRetry || !retrySettings.enabled} size="sm" />
+							<Helper class="text-xs mt-1">{$t('settings.retry.maxAttemptsHelp')}</Helper>
+						</div>
+
+						<div>
+							<Label for="retry-initial" class="text-xs mb-1">{$t('settings.retry.initialBackoff')}</Label>
+							<Input id="retry-initial" type="number" min="50" max="60000" step="50" bind:value={retrySettings.initial_backoff_ms} disabled={savingRetry || !retrySettings.enabled} size="sm" />
+							<Helper class="text-xs mt-1">{$t('settings.retry.initialBackoffHelp')}</Helper>
+						</div>
+
+						<div>
+							<Label for="retry-max" class="text-xs mb-1">{$t('settings.retry.maxBackoff')}</Label>
+							<Input id="retry-max" type="number" min="50" max="120000" step="100" bind:value={retrySettings.max_backoff_ms} disabled={savingRetry || !retrySettings.enabled} size="sm" />
+							<Helper class="text-xs mt-1">{$t('settings.retry.maxBackoffHelp')}</Helper>
+						</div>
+
+						<Button type="submit" color="blue" disabled={savingRetry} size="sm" class="w-full">
+							{savingRetry ? $t('common.saving') : $t('settings.retry.save')}
+						</Button>
+					</form>
+				{:else}
+					<p class="text-sm text-gray-500">{$t('common.loading')}</p>
+				{/if}
+			</Card>
+		</div>
 	</TabItem>
 
 	<!-- ========================= SECRETS ============================ -->

@@ -80,18 +80,17 @@ impl Client {
             self.owner, self.repo, username
         );
 
-        let response = self.octocrab._get(&url).await;
+        // Retry transient transport failures; a 404 (not a collaborator)
+        // is classified as permanent and falls through to the match below.
+        let response = crate::retry::with_retry("github: collaborator check", || async {
+            let resp = self.octocrab._get(&url).await?;
+            let body = self.octocrab.body_to_string(resp).await?;
+            Ok::<_, anyhow::Error>(body)
+        })
+        .await;
 
         match response {
-            Ok(resp) => {
-                let body = self
-                    .octocrab
-                    .body_to_string(resp)
-                    .await
-                    .unwrap_or_else(|e| {
-                        tracing::warn!("Failed to read collaborator response: {e}");
-                        String::new()
-                    });
+            Ok(body) => {
                 let json: serde_json::Value = serde_json::from_str(&body).unwrap_or_else(|e| {
                     tracing::warn!("Failed to parse collaborator JSON: {e}");
                     serde_json::Value::default()
@@ -136,17 +135,18 @@ impl Client {
             self.owner, self.repo
         );
 
-        let response = self
-            .octocrab
-            ._post(&url, Some(&pr_body))
-            .await
-            .context("Failed to create draft pull request")?;
-
-        let response_body = self
-            .octocrab
-            .body_to_string(response)
-            .await
-            .context("Failed to read create PR response")?;
+        let response_body = crate::retry::with_retry("github: create draft PR", || async {
+            let response = self
+                .octocrab
+                ._post(&url, Some(&pr_body))
+                .await
+                .context("Failed to create draft pull request")?;
+            self.octocrab
+                .body_to_string(response)
+                .await
+                .context("Failed to read create PR response")
+        })
+        .await?;
 
         let pr_json: serde_json::Value =
             serde_json::from_str(&response_body).context("Failed to parse create PR response")?;

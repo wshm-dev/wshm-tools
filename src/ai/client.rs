@@ -323,26 +323,28 @@ impl AiClient {
             ]
         });
 
-        let req = self
-            .http
-            .post(&self.provider.api_url)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .header("x-api-key", self.provider.api_key.as_str());
+        let text = crate::retry::with_retry("AI: Anthropic", || async {
+            let response = self
+                .http
+                .post(&self.provider.api_url)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .header("x-api-key", self.provider.api_key.as_str())
+                .json(&body)
+                .send()
+                .await
+                .context("Failed to call Anthropic API")?;
 
-        let response = req
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to call Anthropic API")?;
+            let status = response.status();
+            let text = response.text().await?;
 
-        let status = response.status();
-        let text = response.text().await?;
-
-        if !status.is_success() {
-            let safe_text = truncate_error_body(&text);
-            anyhow::bail!("Anthropic API error ({status}): {safe_text}");
-        }
+            if !status.is_success() {
+                let safe_text = truncate_error_body(&text);
+                anyhow::bail!("Anthropic API error ({status}): {safe_text}");
+            }
+            Ok::<_, anyhow::Error>(text)
+        })
+        .await?;
 
         let resp: serde_json::Value = serde_json::from_str(&text)?;
         let content = resp["content"][0]["text"]
@@ -363,34 +365,38 @@ impl AiClient {
             "temperature": 0.1
         });
 
-        let mut req = self
-            .http
-            .post(&self.provider.api_url)
-            .header("content-type", "application/json");
+        let text = crate::retry::with_retry("AI: OpenAI-compatible", || async {
+            let mut req = self
+                .http
+                .post(&self.provider.api_url)
+                .header("content-type", "application/json");
 
-        // Azure uses api-key header, others use Bearer token
-        if self.provider.api_url.contains("openai.azure.com") {
-            req = req.header("api-key", self.provider.api_key.as_str());
-        } else if !self.provider.api_key.is_empty() {
-            req = req.header(
-                "Authorization",
-                format!("Bearer {}", self.provider.api_key.as_str()),
-            );
-        }
+            // Azure uses api-key header, others use Bearer token
+            if self.provider.api_url.contains("openai.azure.com") {
+                req = req.header("api-key", self.provider.api_key.as_str());
+            } else if !self.provider.api_key.is_empty() {
+                req = req.header(
+                    "Authorization",
+                    format!("Bearer {}", self.provider.api_key.as_str()),
+                );
+            }
 
-        let response = req
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to call AI API")?;
+            let response = req
+                .json(&body)
+                .send()
+                .await
+                .context("Failed to call AI API")?;
 
-        let status = response.status();
-        let text = response.text().await?;
+            let status = response.status();
+            let text = response.text().await?;
 
-        if !status.is_success() {
-            let safe_text = truncate_error_body(&text);
-            anyhow::bail!("AI API error ({status}): {safe_text}");
-        }
+            if !status.is_success() {
+                let safe_text = truncate_error_body(&text);
+                anyhow::bail!("AI API error ({status}): {safe_text}");
+            }
+            Ok::<_, anyhow::Error>(text)
+        })
+        .await?;
 
         let resp: serde_json::Value = serde_json::from_str(&text)?;
         let content = resp["choices"][0]["message"]["content"]
@@ -414,23 +420,27 @@ impl AiClient {
             }
         });
 
-        let response = self
-            .http
-            .post(&self.provider.api_url)
-            .header("content-type", "application/json")
-            .header("x-goog-api-key", self.provider.api_key.as_str())
-            .json(&body)
-            .send()
-            .await
-            .context("Failed to call Google Gemini API")?;
+        let text = crate::retry::with_retry("AI: Google Gemini", || async {
+            let response = self
+                .http
+                .post(&self.provider.api_url)
+                .header("content-type", "application/json")
+                .header("x-goog-api-key", self.provider.api_key.as_str())
+                .json(&body)
+                .send()
+                .await
+                .context("Failed to call Google Gemini API")?;
 
-        let status = response.status();
-        let text = response.text().await?;
+            let status = response.status();
+            let text = response.text().await?;
 
-        if !status.is_success() {
-            let safe_text = truncate_error_body(&text);
-            anyhow::bail!("Google Gemini API error ({status}): {safe_text}");
-        }
+            if !status.is_success() {
+                let safe_text = truncate_error_body(&text);
+                anyhow::bail!("Google Gemini API error ({status}): {safe_text}");
+            }
+            Ok::<_, anyhow::Error>(text)
+        })
+        .await?;
 
         let resp: serde_json::Value = serde_json::from_str(&text)?;
         let content = resp["candidates"][0]["content"]["parts"][0]["text"]
