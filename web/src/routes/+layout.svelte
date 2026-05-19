@@ -55,7 +55,7 @@
 	type IconName =
 		| 'dashboard' | 'summary' | 'issues' | 'prs' | 'triage' | 'queue'
 		| 'changelog' | 'revert' | 'backups' | 'activity' | 'actions' | 'logs'
-		| 'search' | 'settings' | 'insights';
+		| 'search' | 'settings' | 'insights' | 'issueInsights';
 
 	type NavItem = {
 		href: string;
@@ -72,6 +72,12 @@
 		{ href: '/issues', label: 'Issues', icon: 'issues' },
 		{ href: '/prs', label: 'Pull Requests', icon: 'prs' },
 		{ href: '/pr-insights', label: 'PR Insights', icon: 'insights', feature: 'pr-insights' },
+		{
+			href: '/issue-insights',
+			label: 'Issue Insights',
+			icon: 'issueInsights',
+			feature: 'issue-insights'
+		},
 		{ href: '/triage', label: 'Triage', icon: 'triage' },
 		{ href: '/queue', label: 'Merge Queue', icon: 'queue' },
 		{ href: '/changelog', label: 'Changelog', icon: 'changelog' },
@@ -283,6 +289,10 @@
 								{:else if item.icon === 'insights'}
 									<circle cx="12" cy="12" r="9" />
 									<path d="M12 3v9l6.5 6.5" />
+								{:else if item.icon === 'issueInsights'}
+									<path d="M4 20V10" />
+									<path d="M12 20V4" />
+									<path d="M20 20v-7" />
 								{:else if item.icon === 'search'}
 									<circle cx="11" cy="11" r="7" />
 									<path d="M21 21l-4.3-4.3" />

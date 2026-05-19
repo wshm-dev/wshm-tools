@@ -1804,6 +1804,10 @@ async fn api_license() -> impl IntoResponse {
         // in wshm-pro, not here. Declared in this list so the SPA can
         // gate the sidebar entry; `is_pro` is the enabled flag.
         ("pr-insights", "PR insights dashboard", is_pro),
+        // Issue Insights — like pr-insights, the route and page live in
+        // wshm-pro. Declared here only so the SPA can gate the sidebar
+        // entry; `is_pro` is the enabled flag.
+        ("issue-insights", "Issue insights dashboard", is_pro),
     ];
 
     let features: Vec<serde_json::Value> = pro_features
