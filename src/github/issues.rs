@@ -35,17 +35,18 @@ impl Client {
                 url.push_str(&format!("&since={since}"));
             }
 
-            let response = self
-                .octocrab
-                ._get(&url)
-                .await
-                .context("Failed to fetch issues")?;
-
-            let body = self
-                .octocrab
-                .body_to_string(response)
-                .await
-                .context("Failed to read issues response body")?;
+            let body = crate::retry::with_retry("github: fetch issues", || async {
+                let response = self
+                    .octocrab
+                    ._get(&url)
+                    .await
+                    .context("Failed to fetch issues")?;
+                self.octocrab
+                    .body_to_string(response)
+                    .await
+                    .context("Failed to read issues response body")
+            })
+            .await?;
 
             let items = super::parse_json_array(&body, "issues")?;
 
@@ -97,12 +98,15 @@ impl Client {
     }
 
     pub async fn label_issue(&self, number: u64, labels: &[String]) -> Result<()> {
-        self.octocrab
-            .issues(&self.owner, &self.repo)
-            .add_labels(number, labels)
-            .await
-            .with_context(|| format!("Failed to label issue #{number}"))?;
-        Ok(())
+        crate::retry::with_retry("github: label issue", || async {
+            self.octocrab
+                .issues(&self.owner, &self.repo)
+                .add_labels(number, labels)
+                .await
+                .with_context(|| format!("Failed to label issue #{number}"))?;
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
     }
 
     /// Add assignees to an issue or PR (GitHub uses the same endpoint).
@@ -113,19 +117,21 @@ impl Client {
         );
         let body = serde_json::json!({ "assignees": assignees });
 
-        let response = self
-            .octocrab
-            ._post(&url, Some(&body))
-            .await
-            .with_context(|| format!("Failed to assign {assignees:?} to #{number}"))?;
+        crate::retry::with_retry("github: add assignees", || async {
+            let response = self
+                .octocrab
+                ._post(&url, Some(&body))
+                .await
+                .with_context(|| format!("Failed to assign {assignees:?} to #{number}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let resp_body = self.octocrab.body_to_string(response).await?;
-            anyhow::bail!("Failed to assign #{number}: {status} {resp_body}");
-        }
-
-        Ok(())
+            let status = response.status();
+            if !status.is_success() {
+                let resp_body = self.octocrab.body_to_string(response).await?;
+                anyhow::bail!("Failed to assign #{number}: {status} {resp_body}");
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
     }
 
     /// Post or update a wshm comment on an issue.
@@ -138,11 +144,15 @@ impl Client {
             self.update_comment(comment_id, &body_with_marker).await?;
         } else {
             debug!("Creating new wshm comment on issue #{number}");
-            self.octocrab
-                .issues(&self.owner, &self.repo)
-                .create_comment(number, &body_with_marker)
-                .await
-                .with_context(|| format!("Failed to comment on issue #{number}"))?;
+            crate::retry::with_retry("github: create comment", || async {
+                self.octocrab
+                    .issues(&self.owner, &self.repo)
+                    .create_comment(number, &body_with_marker)
+                    .await
+                    .with_context(|| format!("Failed to comment on issue #{number}"))?;
+                Ok::<_, anyhow::Error>(())
+            })
+            .await?;
         }
         Ok(())
     }
@@ -159,17 +169,20 @@ impl Client {
                 self.owner, self.repo, pp = super::GITHUB_PER_PAGE
             );
 
-            let response = self
-                .octocrab
-                ._get(&url)
-                .await
-                .with_context(|| format!("Failed to fetch comments for issue #{number}"))?;
-
-            let body = self
-                .octocrab
-                .body_to_string(response)
-                .await
-                .with_context(|| format!("Failed to read comments response for issue #{number}"))?;
+            let body = crate::retry::with_retry("github: fetch comments", || async {
+                let response = self
+                    .octocrab
+                    ._get(&url)
+                    .await
+                    .with_context(|| format!("Failed to fetch comments for issue #{number}"))?;
+                self.octocrab
+                    .body_to_string(response)
+                    .await
+                    .with_context(|| {
+                        format!("Failed to read comments response for issue #{number}")
+                    })
+            })
+            .await?;
 
             let comments = super::parse_json_array(&body, "comments")?;
 
@@ -203,19 +216,21 @@ impl Client {
             self.owner, self.repo
         );
 
-        let response = self
-            .octocrab
-            ._delete(&url, None::<&()>)
-            .await
-            .with_context(|| format!("Failed to delete comment {comment_id}"))?;
+        crate::retry::with_retry("github: delete comment", || async {
+            let response = self
+                .octocrab
+                ._delete(&url, None::<&()>)
+                .await
+                .with_context(|| format!("Failed to delete comment {comment_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() && status.as_u16() != 404 {
-            let resp_body = self.octocrab.body_to_string(response).await?;
-            anyhow::bail!("Failed to delete comment {comment_id}: {status} {resp_body}");
-        }
-
-        Ok(())
+            let status = response.status();
+            if !status.is_success() && status.as_u16() != 404 {
+                let resp_body = self.octocrab.body_to_string(response).await?;
+                anyhow::bail!("Failed to delete comment {comment_id}: {status} {resp_body}");
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
     }
 
     /// Update an existing comment by ID.
@@ -227,19 +242,21 @@ impl Client {
 
         let patch_body = serde_json::json!({ "body": body });
 
-        let response = self
-            .octocrab
-            ._patch(&url, Some(&patch_body))
-            .await
-            .with_context(|| format!("Failed to update comment {comment_id}"))?;
+        crate::retry::with_retry("github: update comment", || async {
+            let response = self
+                .octocrab
+                ._patch(&url, Some(&patch_body))
+                .await
+                .with_context(|| format!("Failed to update comment {comment_id}"))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let resp_body = self.octocrab.body_to_string(response).await?;
-            anyhow::bail!("Failed to update comment {comment_id}: {status} {resp_body}");
-        }
-
-        Ok(())
+            let status = response.status();
+            if !status.is_success() {
+                let resp_body = self.octocrab.body_to_string(response).await?;
+                anyhow::bail!("Failed to update comment {comment_id}: {status} {resp_body}");
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
     }
 
     pub async fn remove_label(&self, number: u64, label: &str) -> Result<()> {
@@ -249,32 +266,38 @@ impl Client {
             self.owner, self.repo
         );
 
-        let response = self
-            .octocrab
-            ._delete(&url, None::<&()>)
-            .await
-            .with_context(|| format!("Failed to remove label '{label}' from #{number}"))?;
+        crate::retry::with_retry("github: remove label", || async {
+            let response = self
+                .octocrab
+                ._delete(&url, None::<&()>)
+                .await
+                .with_context(|| format!("Failed to remove label '{label}' from #{number}"))?;
 
-        let status = response.status();
-        if !status.is_success() && status.as_u16() != 404 {
-            let resp_body = self.octocrab.body_to_string(response).await?;
-            anyhow::bail!("Failed to remove label '{label}' from #{number}: {status} {resp_body}");
-        }
-
-        Ok(())
+            let status = response.status();
+            if !status.is_success() && status.as_u16() != 404 {
+                let resp_body = self.octocrab.body_to_string(response).await?;
+                anyhow::bail!(
+                    "Failed to remove label '{label}' from #{number}: {status} {resp_body}"
+                );
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await
     }
 
     pub async fn create_issue(&self, title: &str, body: &str, labels: &[String]) -> Result<u64> {
         let body = ensure_comment_marker(body, &self.comment_marker);
-        let issue = self
-            .octocrab
-            .issues(&self.owner, &self.repo)
-            .create(title)
-            .body(&body)
-            .labels(labels.to_vec())
-            .send()
-            .await
-            .with_context(|| format!("Failed to create issue: {title}"))?;
+        let issue = crate::retry::with_retry("github: create issue", || async {
+            self.octocrab
+                .issues(&self.owner, &self.repo)
+                .create(title)
+                .body(&body)
+                .labels(labels.to_vec())
+                .send()
+                .await
+                .with_context(|| format!("Failed to create issue: {title}"))
+        })
+        .await?;
         Ok(issue.number)
     }
 

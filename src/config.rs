@@ -1318,6 +1318,12 @@ pub struct GlobalConfig {
     #[serde(default)]
     pub update: UpdateConfig,
 
+    /// Transient-HTTP-error retry policy, shared by every outbound HTTP
+    /// call (poller, git providers, AI, self-update). Editable live from
+    /// Settings -> Reliability.
+    #[serde(default)]
+    pub retry: crate::retry::RetryConfig,
+
     #[serde(default)]
     pub repos: Vec<RepoEntry>,
 }

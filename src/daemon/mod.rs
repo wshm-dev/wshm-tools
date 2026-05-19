@@ -418,6 +418,11 @@ pub async fn run_multi_with_extensions(
         extensions.logs = log_buffer::global();
     }
 
+    // Install the retry policy process-wide so every outbound HTTP call
+    // (poller, git providers, AI, self-update) honors it. The Settings UI
+    // re-installs it on save, so this is just the boot-time default.
+    crate::retry::set_global(global.retry.clone());
+
     // Open a default UserStore on ~/.wshm/users.db when the caller didn't
     // provide one, so OSS gets a working RBAC + login flow out of the box.
     // The Pro binary still passes its own (possibly Postgres-backed) store

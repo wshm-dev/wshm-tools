@@ -511,6 +511,35 @@ export async function updateRepoFeatures(
 	return res.json();
 }
 
+/// HTTP retry policy, shared by every outbound call (poller, git
+/// providers, AI, self-update). Editable from Settings -> Reliability;
+/// changes apply live without a daemon restart.
+export interface RetrySettings {
+	enabled: boolean;
+	max_attempts: number;
+	initial_backoff_ms: number;
+	max_backoff_ms: number;
+}
+
+export function fetchRetrySettings(): Promise<RetrySettings> {
+	return apiGet<RetrySettings>('/config/retry');
+}
+
+export async function updateRetrySettings(
+	patch: Partial<RetrySettings>
+): Promise<RetrySettings> {
+	const res = await fetch('/api/v1/config/retry', {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json', ...CSRF_HEADERS },
+		body: JSON.stringify(patch)
+	});
+	if (!res.ok) {
+		const body = await res.json().catch(() => ({}));
+		throw new Error(body.error ?? `HTTP ${res.status}`);
+	}
+	return res.json();
+}
+
 export interface Me {
 	id?: number;
 	email: string | null;

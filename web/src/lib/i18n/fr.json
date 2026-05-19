@@ -74,6 +74,7 @@
 	"settings.tabs.license": "Licence",
 	"settings.tabs.appearance": "Apparence",
 	"settings.tabs.configuration": "Configuration",
+	"settings.tabs.reliability": "Fiabilité",
 	"settings.tabs.secrets": "Secrets",
 	"settings.tabs.users": "Utilisateurs",
 
@@ -161,6 +162,18 @@
 	"settings.config.section.prAnalysis": "Analyse PR",
 	"settings.config.section.mergeQueue": "File de merge",
 	"settings.config.section.sync": "Synchronisation",
+
+	"settings.retry.title": "Politique de réessai HTTP",
+	"settings.retry.helper": "Comment wshm réessaie les échecs réseau transitoires — connexions coupées, délais dépassés, erreurs serveur 5xx / 429 — sur chaque appel sortant : le poller, les fournisseurs Git, l'IA et la mise à jour automatique. Les changements s'appliquent immédiatement, sans redémarrage.",
+	"settings.retry.enabled": "Activer les réessais",
+	"settings.retry.maxAttempts": "Tentatives max",
+	"settings.retry.maxAttemptsHelp": "Nombre total d'essais, première tentative incluse (1–10).",
+	"settings.retry.initialBackoff": "Délai initial (ms)",
+	"settings.retry.initialBackoffHelp": "Délai avant le premier réessai ; doublé à chaque tentative.",
+	"settings.retry.maxBackoff": "Délai max (ms)",
+	"settings.retry.maxBackoffHelp": "Limite supérieure d'un délai de réessai.",
+	"settings.retry.save": "Enregistrer la politique",
+	"settings.retry.saved": "Politique de réessai enregistrée.",
 
 	"settings.secrets.banner.title": "Stockage avancé de secrets chiffrés.",
 	"settings.secrets.banner.body": "Pour ton token GitHub, utilise Fournisseurs Git ; pour les clés API Anthropic / OpenAI / Gemini, utilise Fournisseurs IA. Cet onglet sert aux secrets additionnels (overrides par dépôt, intégrations custom) stockés chiffrés à côté du token store.",
