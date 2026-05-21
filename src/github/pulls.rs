@@ -16,6 +16,43 @@ pub struct MergedPullRequest {
     pub created_at: String,
 }
 
+/// Build a [`PullRequest`] from a GitHub API pull request JSON object.
+fn parse_pull(pr: &serde_json::Value) -> PullRequest {
+    let state = pr.get("state").and_then(|v| v.as_str()).unwrap_or("open");
+    PullRequest {
+        number: pr["number"].as_u64().unwrap_or(0),
+        title: pr["title"].as_str().unwrap_or("").to_string(),
+        body: pr.get("body").and_then(|v| v.as_str()).map(String::from),
+        state: state.to_string(),
+        labels: super::extract_labels(pr),
+        author: super::extract_author(pr),
+        head_sha: pr
+            .get("head")
+            .and_then(|h| h.get("sha"))
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        base_sha: pr
+            .get("base")
+            .and_then(|h| h.get("sha"))
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        head_ref: pr
+            .get("head")
+            .and_then(|h| h.get("ref"))
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        base_ref: pr
+            .get("base")
+            .and_then(|h| h.get("ref"))
+            .and_then(|v| v.as_str())
+            .map(String::from),
+        mergeable: pr.get("mergeable").and_then(|v| v.as_bool()),
+        ci_status: None,
+        created_at: pr["created_at"].as_str().unwrap_or("").to_string(),
+        updated_at: pr["updated_at"].as_str().unwrap_or("").to_string(),
+    }
+}
+
 impl Client {
     /// Fetch merged pull requests, optionally filtering to those merged since a given ISO date.
     pub async fn fetch_merged_pulls(&self, since: Option<&str>) -> Result<Vec<MergedPullRequest>> {
@@ -136,50 +173,16 @@ impl Client {
             let mut should_stop = false;
 
             for pr in &items {
-                let state = pr.get("state").and_then(|v| v.as_str()).unwrap_or("open");
-                let mergeable = pr.get("mergeable").and_then(|v| v.as_bool());
-                let updated_at = pr["updated_at"].as_str().unwrap_or("").to_string();
-
                 // Forever-incremental: stop if this PR is older than `since`
                 if let Some(since_ts) = since {
-                    if updated_at.as_str() < since_ts {
+                    let updated_at = pr["updated_at"].as_str().unwrap_or("");
+                    if updated_at < since_ts {
                         should_stop = true;
                         break;
                     }
                 }
 
-                all_pulls.push(PullRequest {
-                    number: pr["number"].as_u64().unwrap_or(0),
-                    title: pr["title"].as_str().unwrap_or("").to_string(),
-                    body: pr.get("body").and_then(|v| v.as_str()).map(String::from),
-                    state: state.to_string(),
-                    labels: super::extract_labels(pr),
-                    author: super::extract_author(pr),
-                    head_sha: pr
-                        .get("head")
-                        .and_then(|h| h.get("sha"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                    base_sha: pr
-                        .get("base")
-                        .and_then(|h| h.get("sha"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                    head_ref: pr
-                        .get("head")
-                        .and_then(|h| h.get("ref"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                    base_ref: pr
-                        .get("base")
-                        .and_then(|h| h.get("ref"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from),
-                    mergeable,
-                    ci_status: None,
-                    created_at: pr["created_at"].as_str().unwrap_or("").to_string(),
-                    updated_at,
-                });
+                all_pulls.push(parse_pull(pr));
             }
 
             if should_stop || items.len() < 100 || page >= 100 {
@@ -214,6 +217,53 @@ impl Client {
             serde_json::from_str(&body).context("Failed to parse PR JSON")?;
 
         Ok(pr_json.get("mergeable").and_then(|v| v.as_bool()))
+    }
+
+    /// Fetch a single pull request by number from the canonical (strongly
+    /// consistent) `/pulls/{number}` endpoint.
+    ///
+    /// Mirrors [`Client::fetch_issue`]: the list endpoint is served from a
+    /// replicated index that lags PR creation by a few seconds, so a sync
+    /// triggered right after a `pull_request.opened` webhook can miss the
+    /// brand-new PR and surface "PR #N not found in cache" at analysis time.
+    /// The single-PR endpoint always reflects the latest state.
+    ///
+    /// Returns `Ok(None)` when the PR was deleted/transferred (404).
+    pub async fn fetch_pull(&self, number: u64) -> Result<Option<PullRequest>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{number}",
+            self.owner, self.repo
+        );
+
+        let body = crate::retry::with_retry("github: fetch PR", || async {
+            let response = self
+                .octocrab
+                ._get(&url)
+                .await
+                .with_context(|| format!("Failed to fetch PR #{number}"))?;
+            self.octocrab
+                .body_to_string(response)
+                .await
+                .with_context(|| format!("Failed to read PR #{number} body"))
+        })
+        .await?;
+
+        let item: serde_json::Value =
+            serde_json::from_str(&body).context("Failed to parse PR JSON")?;
+
+        // A 404 (deleted/transferred PR) comes back as an object with a
+        // `message` field rather than a PR payload.
+        if item.get("number").is_none() {
+            if let Some(msg) = item.get("message").and_then(|v| v.as_str()) {
+                if msg.eq_ignore_ascii_case("Not Found") {
+                    return Ok(None);
+                }
+                anyhow::bail!("GitHub error while fetching PR #{number}: {msg}");
+            }
+            return Ok(None);
+        }
+
+        Ok(Some(parse_pull(&item)))
     }
 
     pub async fn fetch_pr_diff(&self, number: u64) -> Result<String> {
@@ -352,5 +402,55 @@ impl Client {
     /// Delegates to comment_issue since GitHub uses the same API for both.
     pub async fn comment_pr(&self, number: u64, body: &str) -> Result<()> {
         self.comment_issue(number, body).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_pull_builds_pull_request() {
+        let item = serde_json::json!({
+            "number": 42,
+            "title": "Add feature",
+            "body": "description",
+            "state": "open",
+            "labels": [{ "name": "enhancement" }],
+            "user": { "login": "octocat" },
+            "head": { "sha": "abc123", "ref": "feature" },
+            "base": { "sha": "def456", "ref": "main" },
+            "mergeable": true,
+            "created_at": "2026-05-01T00:00:00Z",
+            "updated_at": "2026-05-02T00:00:00Z",
+        });
+        let pr = parse_pull(&item);
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.title, "Add feature");
+        assert_eq!(pr.state, "open");
+        assert_eq!(pr.labels, vec!["enhancement".to_string()]);
+        assert_eq!(pr.author.as_deref(), Some("octocat"));
+        assert_eq!(pr.head_sha.as_deref(), Some("abc123"));
+        assert_eq!(pr.base_ref.as_deref(), Some("main"));
+        assert_eq!(pr.mergeable, Some(true));
+    }
+
+    #[test]
+    fn test_parse_pull_handles_missing_optionals() {
+        // A freshly opened PR may have null mergeable and no body.
+        let item = serde_json::json!({
+            "number": 43,
+            "title": "Draft",
+            "state": "open",
+            "head": { "sha": "aaa", "ref": "wip" },
+            "base": { "sha": "bbb", "ref": "develop" },
+            "created_at": "2026-05-01T00:00:00Z",
+            "updated_at": "2026-05-01T00:00:00Z",
+        });
+        let pr = parse_pull(&item);
+        assert_eq!(pr.number, 43);
+        assert_eq!(pr.body, None);
+        assert_eq!(pr.mergeable, None);
+        assert!(pr.labels.is_empty());
     }
 }

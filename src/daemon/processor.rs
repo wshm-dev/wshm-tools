@@ -213,6 +213,31 @@ async fn handle_issue(state: &DaemonState, event: &WebhookEvent) -> anyhow::Resu
     // Force sync issues (bypass throttle — we know there's a new event)
     gh_sync::sync_issues_now(&state.gh(), &state.db).await?;
 
+    // The list endpoint lags issue creation by a few seconds (replicated
+    // index), so a sync right after `issues.opened` can miss the brand-new
+    // issue, which then surfaces as "Issue #N not found in cache" at triage.
+    // Fetch it directly from the canonical single-issue endpoint to guarantee
+    // it is cached before we triage.
+    if let Some(n) = number {
+        if matches!(state.db.get_issue(n), Ok(None)) {
+            match state.gh().fetch_issue(n).await {
+                Ok(Some(issue)) => {
+                    if let Err(e) = state.db.upsert_issue(&issue) {
+                        warn!("Failed to cache issue #{n} after direct fetch: {e}");
+                    }
+                }
+                Ok(None) => {
+                    info!(
+                        "[{}] issue #{n} not returned by GitHub (deleted, transferred, or a PR) — skipping",
+                        state.config.repo_slug()
+                    );
+                    return Ok(());
+                }
+                Err(e) => warn!("Direct fetch of issue #{n} failed: {e:#}"),
+            }
+        }
+    }
+
     if !features.triage_issues {
         info!(
             "[{}] triage_issues disabled — issue {number:?} synced but not triaged",
@@ -330,6 +355,30 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
     }
     // Force sync pulls (bypass throttle — we know there's a new event)
     gh_sync::sync_pulls_now(&state.gh(), &state.db).await?;
+
+    // The list endpoint lags PR creation by a few seconds (replicated index),
+    // so a sync right after `pull_request.opened` can miss the brand-new PR,
+    // which then surfaces as "PR #N not found in cache" at analysis. Fetch it
+    // directly from the canonical single-PR endpoint to guarantee it is cached.
+    if let Some(n) = number {
+        if matches!(state.db.get_pull(n), Ok(None)) {
+            match state.gh().fetch_pull(n).await {
+                Ok(Some(pr)) => {
+                    if let Err(e) = state.db.upsert_pull(&pr) {
+                        warn!("Failed to cache PR #{n} after direct fetch: {e}");
+                    }
+                }
+                Ok(None) => {
+                    info!(
+                        "[{}] PR #{n} not returned by GitHub (deleted or transferred) — skipping",
+                        state.config.repo_slug()
+                    );
+                    return Ok(());
+                }
+                Err(e) => warn!("Direct fetch of PR #{n} failed: {e:#}"),
+            }
+        }
+    }
 
     if !features.analyze_prs {
         info!(
