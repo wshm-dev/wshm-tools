@@ -79,6 +79,16 @@ pub async fn run(
             }
             Err(e) => {
                 tracing::error!("Failed to analyze PR #{}: {e:#}", pr.number);
+                // The AI provider is rate limited — every remaining PR in this
+                // batch will fail identically, so stop instead of burning a
+                // failed request per PR every cycle.
+                if crate::pipelines::is_usage_limit_error(&e) {
+                    tracing::warn!(
+                        "Aborting PR analysis batch — AI usage limit reached ({} PRs left)",
+                        pulls.len() - results.len()
+                    );
+                    break;
+                }
             }
         }
     }

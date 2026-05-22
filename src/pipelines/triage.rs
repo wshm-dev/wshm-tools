@@ -140,6 +140,16 @@ pub async fn run(
             }
             Err(e) => {
                 tracing::error!("Failed to triage issue #{}: {e:#}", issue.number);
+                // The AI provider is rate limited — every remaining issue in
+                // this batch will fail identically, so stop instead of burning
+                // a failed request per issue every cycle.
+                if crate::pipelines::is_usage_limit_error(&e) {
+                    tracing::warn!(
+                        "Aborting triage batch — AI usage limit reached ({} issues left)",
+                        issues.len() - results.len()
+                    );
+                    break;
+                }
             }
         }
     }
