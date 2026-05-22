@@ -300,8 +300,30 @@ impl AiClient {
             .context("Failed to run `claude -p`. Is claude CLI installed? (npm install -g @anthropic-ai/claude-code)")?;
 
         if !output.status.success() {
+            // The claude CLI writes operational failures (usage limit, auth,
+            // low credit) to stdout, not stderr — so capture both plus the
+            // exit code, otherwise the logged error is empty and useless.
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("claude CLI error: {stderr}");
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let detail: String = [stderr.trim(), stdout.trim()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            let detail = if detail.is_empty() {
+                "no output".to_string()
+            } else {
+                detail
+            };
+            // Surface usage/rate limits distinctly so operators know to wait
+            // for the reset or switch credentials, not chase a phantom error.
+            if detail.to_ascii_lowercase().contains("limit") {
+                anyhow::bail!("claude CLI usage limit reached: {detail}");
+            }
+            anyhow::bail!(
+                "claude CLI failed (exit {}): {detail}",
+                output.status.code().unwrap_or(-1)
+            );
         }
 
         let text = String::from_utf8_lossy(&output.stdout).to_string();
