@@ -136,13 +136,14 @@ pub async fn run(state: Arc<DaemonState>) {
                 retriage: false,
             };
 
-            match pipelines::triage::run(
+            match pipelines::triage::run_with_filters(
                 &state.config,
                 &state.db,
                 &state.gh(),
                 &args,
                 pipelines::triage::OutputFormat::Text,
                 None,
+                Some(&features.filters),
             )
             .await
             {
@@ -187,13 +188,14 @@ pub async fn run(state: Arc<DaemonState>) {
                 retriage: true,
             };
 
-            match pipelines::triage::run(
+            match pipelines::triage::run_with_filters(
                 &state.config,
                 &state.db,
                 &state.gh(),
                 &args,
                 pipelines::triage::OutputFormat::Text,
                 None,
+                Some(&features.filters),
             )
             .await
             {

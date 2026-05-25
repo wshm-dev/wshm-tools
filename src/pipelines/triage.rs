@@ -37,6 +37,23 @@ pub async fn run(
     format: OutputFormat,
     exporter: Option<&ExportManager>,
 ) -> Result<()> {
+    run_with_filters(config, db, gh, args, format, exporter, None).await
+}
+
+/// Same as [`run`], but applies per-action filters (skip authors / skip
+/// labels / age) to each issue before spending AI credits. The scheduled
+/// batch passes `Some(&features.filters)` so it honors the same gates the
+/// webhook path already enforces; manual/CLI callers pass `None`.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_with_filters(
+    config: &Config,
+    db: &Database,
+    gh: &GhClient,
+    args: &TriageArgs,
+    format: OutputFormat,
+    exporter: Option<&ExportManager>,
+    filters: Option<&crate::config::RepoFilters>,
+) -> Result<()> {
     let json = format == OutputFormat::Json;
     let model = config.model_for("triage");
     let backend = AiBackend::from_config(config, model)?;
@@ -111,6 +128,31 @@ pub async fn run(
         if config.issues_blacklist.contains(&issue.number) {
             info!("Skipping blacklisted issue #{}", issue.number);
             continue;
+        }
+
+        // Apply per-action filters before consuming AI credits, so the
+        // scheduled batch honors the same gates as the webhook path (e.g. a
+        // `triage_skip_labels` marker means "never (re-)triage this issue").
+        if let Some(f) = filters {
+            if f.is_author_skipped(issue.author.as_deref()) {
+                info!(
+                    "Skipping issue #{} (author '{}' in skip_authors)",
+                    issue.number,
+                    issue.author.as_deref().unwrap_or("?")
+                );
+                continue;
+            }
+            if !f.issue_labels_pass_triage(&issue.labels) {
+                info!("Skipping issue #{} (labels filter)", issue.number);
+                continue;
+            }
+            if !f.issue_age_ok(&issue.created_at) {
+                info!(
+                    "Skipping issue #{} (older than {} days)",
+                    issue.number, f.triage_max_age_days
+                );
+                continue;
+            }
         }
 
         info!("Triaging issue #{}: {}", issue.number, issue.title);
@@ -206,13 +248,17 @@ async fn triage_issue(
                 "Skipping LLM for issue #{} — content unchanged (hash match)",
                 issue.number
             );
-            // Reconstruct IssueClassification from cached row
+            // Reconstruct IssueClassification from the cached row. The labels
+            // wshm applied are persisted as suggested_labels, so restore them
+            // for faithful --json/--csv output (we still won't re-apply on a
+            // cache hit — they are already on the issue).
+            let suggested_labels = db.get_wshm_applied_labels(issue.number).unwrap_or_default();
             return Ok(IssueClassification {
                 category: existing.category,
                 confidence: existing.confidence,
                 priority: existing.priority,
                 summary: existing.summary.unwrap_or_default(),
-                suggested_labels: Vec::new(), // not stored in row, but we won't re-apply
+                suggested_labels,
                 is_duplicate_of: None,
                 is_simple_fix: existing.is_simple_fix,
                 relevant_files: Vec::new(),

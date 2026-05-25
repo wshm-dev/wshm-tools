@@ -44,7 +44,7 @@ pub async fn run(
             }
         }
     } else {
-        db.get_unanalyzed_pulls()?
+        db.get_pulls_needing_analysis()?
     };
 
     if pulls.is_empty() {
@@ -109,6 +109,42 @@ async fn analyze_pr(
     apply: bool,
     exporter: Option<&ExportManager>,
 ) -> Result<PrAnalysis> {
+    // Content hash cache: skip LLM call if content hasn't changed since last
+    // analysis. The hash covers title + body + head_sha + labels, so a new
+    // push (head_sha change) or an edit re-triggers analysis, but a no-op
+    // event (e.g. assignee change) reuses the cached result.
+    let content_hash = crate::db::schema::compute_pr_hash(
+        &pr.title,
+        pr.body.as_deref(),
+        pr.head_sha.as_deref(),
+        &pr.labels,
+    );
+
+    if let Ok(Some(existing)) = db.get_pr_analysis(pr.number) {
+        if existing.content_hash.as_deref() == Some(content_hash.as_str()) {
+            tracing::info!(
+                "Skipping LLM for PR #{} — content unchanged (hash match)",
+                pr.number
+            );
+            // Reconstruct PrAnalysis from the cached row. suggested_labels and
+            // linked_issues were applied at first analysis and are not stored,
+            // so they stay empty (we won't re-apply on a cache hit).
+            let review_checklist = existing
+                .review_notes
+                .as_deref()
+                .and_then(|n| serde_json::from_str(n).ok())
+                .unwrap_or_default();
+            return Ok(PrAnalysis {
+                summary: existing.summary,
+                risk_level: existing.risk_level,
+                pr_type: existing.pr_type,
+                linked_issues: Vec::new(),
+                review_checklist,
+                suggested_labels: Vec::new(),
+            });
+        }
+    }
+
     // Try to fetch diff (best-effort)
     let diff = match gh.fetch_pr_diff(pr.number).await {
         Ok(d) => Some(d),
@@ -150,14 +186,15 @@ async fn analyze_pr(
     let now = chrono::Utc::now().to_rfc3339();
     db.with_conn(|conn| {
         conn.execute(
-            "INSERT INTO pr_analyses (pr_number, summary, risk_level, pr_type, review_notes, analyzed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO pr_analyses (pr_number, summary, risk_level, pr_type, review_notes, analyzed_at, content_hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT(pr_number) DO UPDATE SET
                 summary = excluded.summary,
                 risk_level = excluded.risk_level,
                 pr_type = excluded.pr_type,
                 review_notes = excluded.review_notes,
-                analyzed_at = excluded.analyzed_at",
+                analyzed_at = excluded.analyzed_at,
+                content_hash = excluded.content_hash",
             rusqlite::params![
                 pr.number,
                 analysis.summary,
@@ -165,6 +202,7 @@ async fn analyze_pr(
                 analysis.pr_type,
                 serde_json::to_string(&analysis.review_checklist)?,
                 now,
+                content_hash,
             ],
         )?;
         Ok(())
