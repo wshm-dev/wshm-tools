@@ -28,6 +28,8 @@ pub struct PrAnalysisRow {
     pub pr_type: String,
     pub review_notes: Option<String>,
     pub analyzed_at: String,
+    #[serde(default)]
+    pub content_hash: Option<String>,
 }
 
 use crate::db::Database;
@@ -36,7 +38,7 @@ impl Database {
     pub fn get_pr_analysis(&self, pr_number: u64) -> Result<Option<PrAnalysisRow>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT pr_number, summary, risk_level, pr_type, review_notes, analyzed_at
+                "SELECT pr_number, summary, risk_level, pr_type, review_notes, analyzed_at, content_hash
                  FROM pr_analyses WHERE pr_number = ?1",
             )?;
 
@@ -48,6 +50,7 @@ impl Database {
                     pr_type: row.get(3)?,
                     review_notes: row.get(4)?,
                     analyzed_at: row.get(5)?,
+                    content_hash: row.get(6)?,
                 })
             });
 
@@ -90,6 +93,10 @@ impl Database {
 
     pub fn get_unanalyzed_pulls(&self) -> Result<Vec<PullRequest>> {
         self.with_conn(get_unanalyzed_pulls)
+    }
+
+    pub fn get_pulls_needing_analysis(&self) -> Result<Vec<PullRequest>> {
+        self.with_conn(get_pulls_needing_analysis)
     }
 }
 
@@ -191,4 +198,139 @@ pub fn get_unanalyzed_pulls(conn: &Connection) -> Result<Vec<PullRequest>> {
         .query_map([], row_to_pull)?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(pulls)
+}
+
+/// Open PRs that need (re)analysis: never analyzed (NULL hash) OR whose
+/// content changed since the last analysis (stored hash != current hash).
+/// Mirrors `get_issues_needing_triage` so the scheduled batch only spends
+/// AI credits when a PR actually changed.
+pub fn get_pulls_needing_analysis(conn: &Connection) -> Result<Vec<PullRequest>> {
+    use crate::db::schema::compute_pr_hash;
+
+    let mut stmt = conn.prepare(
+        "SELECT p.number, p.title, p.body, p.state, p.labels, p.author, p.head_sha, p.base_sha, p.head_ref, p.base_ref, p.mergeable, p.ci_status, p.created_at, p.updated_at,
+                a.content_hash
+         FROM pull_requests p
+         LEFT JOIN pr_analyses a ON p.number = a.pr_number
+         WHERE p.state = 'open'
+         ORDER BY p.number DESC",
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        let pr = row_to_pull(row)?;
+        let stored_hash: Option<String> = row.get(14)?;
+        Ok((pr, stored_hash))
+    })?;
+
+    let mut pulls = Vec::new();
+    for row in rows {
+        let (pr, stored_hash) = row?;
+        let current_hash = compute_pr_hash(
+            &pr.title,
+            pr.body.as_deref(),
+            pr.head_sha.as_deref(),
+            &pr.labels,
+        );
+        if stored_hash.is_none() || stored_hash.as_deref() != Some(current_hash.as_str()) {
+            pulls.push(pr);
+        }
+    }
+    Ok(pulls)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::schema::compute_pr_hash;
+    use crate::db::Database;
+
+    fn test_pull(number: u64, title: &str) -> PullRequest {
+        PullRequest {
+            number,
+            title: title.to_string(),
+            body: Some("Body".to_string()),
+            state: "open".to_string(),
+            labels: vec!["enhancement".to_string()],
+            author: Some("user".to_string()),
+            head_sha: Some("abc123".to_string()),
+            base_sha: Some("def456".to_string()),
+            head_ref: Some("feature".to_string()),
+            base_ref: Some("main".to_string()),
+            mergeable: Some(true),
+            ci_status: Some("success".to_string()),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    /// Insert a pr_analyses row with the given content hash (mirrors the
+    /// production insert in pipelines::pr_analysis).
+    fn record_analysis(db: &Database, pr_number: u64, content_hash: &str) {
+        db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO pr_analyses (pr_number, summary, risk_level, pr_type, review_notes, analyzed_at, content_hash)
+                 VALUES (?1, 'summary', 'low', 'feature', '{}', '2026-01-01T00:00:00Z', ?2)",
+                params![pr_number, content_hash],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_get_pulls_needing_analysis() {
+        let db = Database::open_memory().unwrap();
+
+        // PR 1: never analyzed
+        db.upsert_pull(&test_pull(1, "Never analyzed")).unwrap();
+
+        // PR 2: analyzed, content unchanged
+        let pr2 = test_pull(2, "Already analyzed");
+        db.upsert_pull(&pr2).unwrap();
+        let hash2 = compute_pr_hash(
+            &pr2.title,
+            pr2.body.as_deref(),
+            pr2.head_sha.as_deref(),
+            &pr2.labels,
+        );
+        record_analysis(&db, 2, &hash2);
+
+        // PR 3: analyzed, then new commits pushed (head_sha changed)
+        let mut pr3 = test_pull(3, "New commits");
+        db.upsert_pull(&pr3).unwrap();
+        let hash3_old = compute_pr_hash(
+            &pr3.title,
+            pr3.body.as_deref(),
+            pr3.head_sha.as_deref(),
+            &pr3.labels,
+        );
+        record_analysis(&db, 3, &hash3_old);
+        pr3.head_sha = Some("zzz999".to_string());
+        db.upsert_pull(&pr3).unwrap();
+
+        // PR 4: analyzed and unchanged, but closed — must be excluded
+        let pr4 = test_pull(4, "Closed PR");
+        let mut pr4_closed = pr4.clone();
+        pr4_closed.state = "closed".to_string();
+        db.upsert_pull(&pr4_closed).unwrap();
+        let hash4 = compute_pr_hash(
+            &pr4.title,
+            pr4.body.as_deref(),
+            pr4.head_sha.as_deref(),
+            &pr4.labels,
+        );
+        record_analysis(&db, 4, &hash4);
+
+        let needing = db.get_pulls_needing_analysis().unwrap();
+        let numbers: Vec<u64> = needing.iter().map(|p| p.number).collect();
+
+        assert!(numbers.contains(&1), "never-analyzed PR should be selected");
+        assert!(
+            numbers.contains(&3),
+            "content-changed PR should be selected"
+        );
+        assert!(!numbers.contains(&2), "unchanged PR must be skipped");
+        assert!(!numbers.contains(&4), "closed PR must be skipped");
+        assert_eq!(numbers.len(), 2);
+    }
 }
