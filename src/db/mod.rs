@@ -1,6 +1,7 @@
 pub mod backend;
 pub mod events;
 pub mod issues;
+pub mod licenses;
 pub mod pulls;
 pub mod schema;
 pub mod search;

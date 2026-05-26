@@ -1908,7 +1908,27 @@ fn activate_license(key: &str) -> Result<String, String> {
         .map_err(|e| format!("Invalid response: {e}"))?;
 
     if let Some(token) = body["token"].as_str() {
-        // Cache JWT
+        let plan = body["license"]["type"]
+            .as_str()
+            .unwrap_or("pro")
+            .to_string();
+
+        // Persist to DB first (authoritative store — survives PVC file
+        // truncation that historically wiped license.jwt). Then mirror
+        // to the legacy file path for rétrocompat with operators that
+        // still read it directly.
+        let db_path = dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".wshm")
+            .join("state.db");
+        if let Ok(conn) = crate::db::licenses::open_state_db(&db_path) {
+            if let Err(e) =
+                crate::db::licenses::store(&conn, token, Some(key), Some(&plan), None, None)
+            {
+                tracing::warn!("Failed to persist license to state.db: {e}");
+            }
+        }
+
         let path = dirs::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join(".wshm")
@@ -1923,10 +1943,6 @@ fn activate_license(key: &str) -> Result<String, String> {
             let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
         }
 
-        let plan = body["license"]["type"]
-            .as_str()
-            .unwrap_or("pro")
-            .to_string();
         Ok(plan)
     } else {
         Err(body["error"]
