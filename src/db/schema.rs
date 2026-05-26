@@ -122,6 +122,26 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute_batch("ALTER TABLE pr_analyses ADD COLUMN content_hash TEXT;")?;
     }
 
+    // License storage. Single-row table (CHECK id = 1) so the active
+    // license survives pod restarts and PVC-mounted file truncation —
+    // the previous on-disk `~/.wshm/license.jwt` would silently vanish
+    // when an `fs::write` got interrupted, leaving the daemon unable to
+    // re-activate without operator intervention.
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS licenses (
+            id                INTEGER PRIMARY KEY CHECK (id = 1),
+            jwt               TEXT NOT NULL,
+            license_key       TEXT,
+            plan              TEXT,
+            activated_at      TEXT NOT NULL,
+            activated_by      TEXT,
+            expires_at        TEXT,
+            last_validated_at TEXT
+        );
+        ",
+    )?;
+
     install_search_fts(conn)?;
 
     Ok(())
