@@ -1454,7 +1454,7 @@ impl RepoFeatures {
 /// Per-action filters (whitelist + blacklist combinable). Empty vector
 /// or `0` numeric = no filter on that dimension. All fields default to
 /// permissive — restrict explicitly when narrower behavior is wanted.
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RepoFilters {
     // ── Global (apply to every action) ────────────────────────────
     #[serde(default)]
@@ -1471,6 +1471,15 @@ pub struct RepoFilters {
     pub triage_skip_labels: Vec<String>,
     #[serde(default)]
     pub triage_max_age_days: u32,
+    /// Labels that, when present on an open issue, force re-triage even
+    /// when the content hash is unchanged. After a successful applied
+    /// triage the bot removes these labels so they don't re-fire forever.
+    #[serde(default = "default_triage_relabel_labels")]
+    pub triage_relabel_labels: Vec<String>,
+    /// Re-triage an open issue that has zero labels if its last triage is
+    /// older than this many hours. `0` disables the trigger.
+    #[serde(default = "default_triage_no_labels_min_age_hours")]
+    pub triage_no_labels_min_age_hours: u32,
 
     // ── Analyze PRs ───────────────────────────────────────────────
     #[serde(default)]
@@ -1493,6 +1502,37 @@ pub struct RepoFilters {
     pub auto_merge_min_approvals: u32,
     #[serde(default)]
     pub auto_merge_max_loc: u32,
+}
+
+fn default_triage_relabel_labels() -> Vec<String> {
+    vec!["wshm:relabel".to_string()]
+}
+
+fn default_triage_no_labels_min_age_hours() -> u32 {
+    24
+}
+
+impl Default for RepoFilters {
+    fn default() -> Self {
+        Self {
+            skip_authors: Vec::new(),
+            target_branches: Vec::new(),
+            skip_drafts: false,
+            triage_only_labels: Vec::new(),
+            triage_skip_labels: Vec::new(),
+            triage_max_age_days: 0,
+            triage_relabel_labels: default_triage_relabel_labels(),
+            triage_no_labels_min_age_hours: default_triage_no_labels_min_age_hours(),
+            analyze_min_loc: 0,
+            analyze_max_loc: 0,
+            auto_pr_only_labels: Vec::new(),
+            auto_pr_target_branch: String::new(),
+            auto_merge_only_authors: Vec::new(),
+            auto_merge_only_labels: Vec::new(),
+            auto_merge_min_approvals: 0,
+            auto_merge_max_loc: 0,
+        }
+    }
 }
 
 impl RepoFilters {

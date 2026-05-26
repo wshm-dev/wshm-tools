@@ -122,6 +122,44 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute_batch("ALTER TABLE pr_analyses ADD COLUMN content_hash TEXT;")?;
     }
 
+    // One-shot migration: recompute every existing triage_results.content_hash
+    // with the new label-free formula. Without this, an upgrading pod would
+    // see hash mismatches on every previously-triaged issue and burn AI
+    // credits re-triaging them all on first boot.
+    let triage_hash_v2_done: bool = conn
+        .query_row(
+            "SELECT 1 FROM sync_log WHERE table_name = '__triage_hash_v2_migrated'",
+            [],
+            |_| Ok(()),
+        )
+        .is_ok();
+    if !triage_hash_v2_done {
+        let tx = conn.unchecked_transaction()?;
+        {
+            let mut select = tx.prepare(
+                "SELECT t.issue_number, i.title, i.body
+                 FROM triage_results t JOIN issues i ON t.issue_number = i.number
+                 WHERE t.content_hash IS NOT NULL",
+            )?;
+            let rows: Vec<(i64, String, Option<String>)> = select
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut update = tx.prepare(
+                "UPDATE triage_results SET content_hash = ?1 WHERE issue_number = ?2",
+            )?;
+            for (issue_number, title, body) in rows {
+                let new_hash = compute_issue_hash(&title, body.as_deref());
+                update.execute(rusqlite::params![new_hash, issue_number])?;
+            }
+        }
+        tx.execute(
+            "INSERT INTO sync_log (table_name, last_synced_at, etag)
+             VALUES ('__triage_hash_v2_migrated', CURRENT_TIMESTAMP, NULL)",
+            [],
+        )?;
+        tx.commit()?;
+    }
+
     // License storage. Single-row table (CHECK id = 1) so the active
     // license survives pod restarts and PVC-mounted file truncation —
     // the previous on-disk `~/.wshm/license.jwt` would silently vanish
@@ -291,21 +329,17 @@ fn install_search_fts(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Compute a stable content hash for an issue (title + body + sorted labels).
-/// Used to skip LLM re-analysis when content hasn't changed.
-pub fn compute_issue_hash(title: &str, body: Option<&str>, labels: &[String]) -> String {
+/// Compute a stable content hash for an issue (title + body only).
+///
+/// Labels are intentionally excluded: when the bot applies labels itself
+/// it would otherwise see a hash mismatch on the next cycle and re-triage
+/// the same issue forever (see `__triage_hash_v2_migrated` migration).
+pub fn compute_issue_hash(title: &str, body: Option<&str>) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(title.as_bytes());
     hasher.update(b"\n");
     hasher.update(body.unwrap_or("").as_bytes());
-    hasher.update(b"\n");
-    let mut sorted_labels: Vec<&String> = labels.iter().collect();
-    sorted_labels.sort();
-    for label in sorted_labels {
-        hasher.update(label.as_bytes());
-        hasher.update(b",");
-    }
     format!("{:x}", hasher.finalize())
 }
 
@@ -343,5 +377,57 @@ mod tests {
         conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
         run_migrations(&conn).unwrap();
         run_migrations(&conn).unwrap(); // should not fail
+    }
+
+    #[test]
+    fn test_compute_issue_hash_ignores_labels() {
+        let h1 = compute_issue_hash("title", Some("body"));
+        let h2 = compute_issue_hash("title", Some("body"));
+        assert_eq!(h1, h2);
+        // The hash is now independent of any caller-side label set — the
+        // function no longer accepts labels at all, so this test simply
+        // pins the stability of the new (title, body) signature.
+        let h3 = compute_issue_hash("title", Some("different"));
+        assert_ne!(h1, h3);
+    }
+
+    #[test]
+    fn test_triage_hash_v2_migration_recomputes_existing() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Seed an issue and a triage row whose content_hash was computed
+        // with the OLD (title+body+labels) formula — simulate by inserting
+        // an arbitrary placeholder.
+        conn.execute(
+            "INSERT INTO issues (number, title, body, state, labels, created_at, updated_at)
+             VALUES (1, 't', 'b', 'open', '[\"bug\"]', '2026-01-01', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO triage_results (issue_number, category, confidence, acted_at, content_hash)
+             VALUES (1, 'bug', 0.9, '2026-01-01', 'OLD_HASH_PLACEHOLDER')",
+            [],
+        )
+        .unwrap();
+
+        // Clear the sentinel so the migration runs again on next call.
+        conn.execute(
+            "DELETE FROM sync_log WHERE table_name = '__triage_hash_v2_migrated'",
+            [],
+        )
+        .unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let stored: String = conn
+            .query_row(
+                "SELECT content_hash FROM triage_results WHERE issue_number = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, compute_issue_hash("t", Some("b")));
     }
 }

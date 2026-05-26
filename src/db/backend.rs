@@ -21,7 +21,12 @@ pub trait DatabaseBackend: Send + Sync {
     fn get_issue(&self, number: u64) -> Result<Option<Issue>>;
     fn get_open_issues(&self) -> Result<Vec<Issue>>;
     fn get_untriaged_issues(&self) -> Result<Vec<Issue>>;
-    fn get_issues_needing_triage(&self, limit: usize) -> Result<Vec<Issue>>;
+    fn get_issues_needing_triage(
+        &self,
+        limit: usize,
+        relabel_labels: &[String],
+        no_labels_min_age_hours: u32,
+    ) -> Result<Vec<Issue>>;
     fn merge_issue_labels(&self, number: u64, add: &[String], remove: &[String]) -> Result<()>;
 
     // ── Pull Requests ───────────────────────────────────────────
@@ -89,8 +94,13 @@ impl DatabaseBackend for super::Database {
         self.get_untriaged_issues()
     }
 
-    fn get_issues_needing_triage(&self, limit: usize) -> Result<Vec<Issue>> {
-        self.get_issues_needing_triage(limit)
+    fn get_issues_needing_triage(
+        &self,
+        limit: usize,
+        relabel_labels: &[String],
+        no_labels_min_age_hours: u32,
+    ) -> Result<Vec<Issue>> {
+        self.get_issues_needing_triage(limit, relabel_labels, no_labels_min_age_hours)
     }
 
     fn merge_issue_labels(&self, number: u64, add: &[String], remove: &[String]) -> Result<()> {

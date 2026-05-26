@@ -97,9 +97,14 @@ pub async fn run_with_filters(
         }
         issues
     } else {
-        // Get issues needing triage (never triaged OR content changed)
-        // Process in batches of 20 to avoid overwhelming the LLM API
-        db.get_issues_needing_triage(20)?
+        // Get issues needing triage (never triaged OR content changed OR
+        // carrying a force-relabel marker OR zero-label + stale).
+        // Process in batches of 20 to avoid overwhelming the LLM API.
+        db.get_issues_needing_triage(
+            20,
+            &relabel_labels_from(filters),
+            no_labels_min_age_from(filters),
+        )?
     };
 
     if issues.is_empty() {
@@ -173,6 +178,45 @@ pub async fn run_with_filters(
                 if !json {
                     print_classification(issue, &classification, args.apply);
                 }
+                // After a successful applied triage, strip the force-relabel
+                // markers so the next batch doesn't re-trigger on this issue
+                // forever.
+                if args.apply {
+                    let relabel = relabel_labels_from(filters);
+                    if !relabel.is_empty() {
+                        let to_strip: Vec<String> = issue
+                            .labels
+                            .iter()
+                            .filter(|l| {
+                                relabel.iter().any(|r| r.eq_ignore_ascii_case(l))
+                            })
+                            .cloned()
+                            .collect();
+                        for label in &to_strip {
+                            if let Err(e) = gh.remove_label(issue.number, label).await {
+                                tracing::warn!(
+                                    "Failed to remove relabel marker '{label}' from #{}: {e}",
+                                    issue.number
+                                );
+                            } else {
+                                info!(
+                                    "Removed relabel marker '{label}' from issue #{}",
+                                    issue.number
+                                );
+                            }
+                        }
+                        if !to_strip.is_empty() {
+                            if let Err(e) =
+                                db.merge_issue_labels(issue.number, &[], &to_strip)
+                            {
+                                tracing::warn!(
+                                    "Failed to update local labels for #{} after relabel cleanup: {e}",
+                                    issue.number
+                                );
+                            }
+                        }
+                    }
+                }
                 results.push(TriageOutput {
                     issue_number: issue.number,
                     title: issue.title.clone(),
@@ -226,6 +270,16 @@ pub async fn run_with_filters(
     Ok(())
 }
 
+fn relabel_labels_from(filters: Option<&crate::config::RepoFilters>) -> Vec<String> {
+    filters
+        .map(|f| f.triage_relabel_labels.clone())
+        .unwrap_or_default()
+}
+
+fn no_labels_min_age_from(filters: Option<&crate::config::RepoFilters>) -> u32 {
+    filters.map(|f| f.triage_no_labels_min_age_hours).unwrap_or(0)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn triage_issue(
     config: &Config,
@@ -240,7 +294,7 @@ async fn triage_issue(
 ) -> Result<IssueClassification> {
     // Content hash cache: skip LLM call if content hasn't changed since last triage
     let content_hash =
-        crate::db::schema::compute_issue_hash(&issue.title, issue.body.as_deref(), &issue.labels);
+        crate::db::schema::compute_issue_hash(&issue.title, issue.body.as_deref());
 
     if let Ok(Some(existing)) = db.get_triage_result(issue.number) {
         if existing.content_hash.as_deref() == Some(content_hash.as_str()) {
