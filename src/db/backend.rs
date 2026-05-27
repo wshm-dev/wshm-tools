@@ -98,6 +98,20 @@ pub trait DatabaseBackend: Send + Sync {
     fn pending_event_count(&self) -> Result<u64>;
     fn cleanup_old_events(&self, days: u32) -> Result<u64>;
     fn get_pending_events(&self) -> Result<Vec<WebhookEventRow>>;
+
+    // ── Escape hatch ────────────────────────────────────────────
+
+    /// Downcast to the concrete SQLite `Database` if this backend is SQLite.
+    /// Returns `None` for non-SQLite backends (e.g. Postgres).
+    ///
+    /// Use sparingly — every call site here is a feature that is silently
+    /// unavailable on non-SQLite backends. Prefer adding the operation to
+    /// this trait so all backends implement it. Today this hatch backs:
+    /// the FTS search endpoint and a handful of ad-hoc Pro-only SQL queries
+    /// that have not been ported to the trait yet.
+    fn as_sqlite_db(&self) -> Option<&super::Database> {
+        None
+    }
 }
 
 /// Implement DatabaseBackend for the existing SQLite Database.
@@ -245,5 +259,9 @@ impl DatabaseBackend for super::Database {
 
     fn clear_triage_and_analyses(&self) -> Result<()> {
         self.clear_triage_and_analyses()
+    }
+
+    fn as_sqlite_db(&self) -> Option<&super::Database> {
+        Some(self)
     }
 }

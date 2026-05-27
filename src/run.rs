@@ -36,6 +36,7 @@ pub fn init_core(cli: &Cli) -> Result<(crate::Config, Arc<dyn DatabaseBackend>, 
 }
 
 /// Same as [`init_core`] but also builds an optional export manager.
+#[allow(clippy::type_complexity)]
 pub fn init_full(
     cli: &Cli,
 ) -> Result<(
