@@ -6,15 +6,15 @@
 
 use anyhow::Result;
 
-use crate::db::Database;
+use crate::db::backend::DatabaseBackend;
 
-pub fn run(db: &Database, slug: &str) -> Result<()> {
+pub fn run(db: &dyn DatabaseBackend, slug: &str) -> Result<()> {
     let output = build_context(db, slug)?;
     println!("{output}");
     Ok(())
 }
 
-pub fn build_context(db: &Database, slug: &str) -> Result<String> {
+pub fn build_context(db: &dyn DatabaseBackend, slug: &str) -> Result<String> {
     let mut out = String::with_capacity(8192);
 
     out.push_str(&format!("# {slug} — Repository Context\n\n"));

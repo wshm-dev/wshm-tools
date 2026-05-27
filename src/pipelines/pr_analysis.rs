@@ -7,8 +7,8 @@ use crate::ai::prompts::pr_analyze;
 use crate::ai::schemas::PrAnalysis;
 use crate::cli::PrArgs;
 use crate::config::Config;
-use crate::db::pulls::PullRequest;
-use crate::db::Database;
+use crate::db::backend::DatabaseBackend;
+use crate::db::pulls::{PrAnalysisRow, PullRequest};
 use crate::export::{EventKind, ExportEvent, ExportManager};
 use crate::github::Client as GhClient;
 
@@ -22,7 +22,7 @@ struct PrAnalysisOutput {
 
 pub async fn run(
     config: &Config,
-    db: &Database,
+    db: &dyn DatabaseBackend,
     gh: &GhClient,
     args: &PrArgs,
     json: bool,
@@ -103,7 +103,7 @@ pub async fn run(
 async fn analyze_pr(
     config: &Config,
     ai: &AiBackend,
-    db: &Database,
+    db: &dyn DatabaseBackend,
     gh: &GhClient,
     pr: &PullRequest,
     apply: bool,
@@ -184,28 +184,14 @@ async fn analyze_pr(
 
     // Store in DB
     let now = chrono::Utc::now().to_rfc3339();
-    db.with_conn(|conn| {
-        conn.execute(
-            "INSERT INTO pr_analyses (pr_number, summary, risk_level, pr_type, review_notes, analyzed_at, content_hash)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT(pr_number) DO UPDATE SET
-                summary = excluded.summary,
-                risk_level = excluded.risk_level,
-                pr_type = excluded.pr_type,
-                review_notes = excluded.review_notes,
-                analyzed_at = excluded.analyzed_at,
-                content_hash = excluded.content_hash",
-            rusqlite::params![
-                pr.number,
-                analysis.summary,
-                analysis.risk_level,
-                analysis.pr_type,
-                serde_json::to_string(&analysis.review_checklist)?,
-                now,
-                content_hash,
-            ],
-        )?;
-        Ok(())
+    db.upsert_pr_analysis(&PrAnalysisRow {
+        pr_number: pr.number,
+        summary: analysis.summary.clone(),
+        risk_level: analysis.risk_level.clone(),
+        pr_type: analysis.pr_type.clone(),
+        review_notes: Some(serde_json::to_string(&analysis.review_checklist)?),
+        analyzed_at: now,
+        content_hash: Some(content_hash),
     })?;
 
     // ICM: store PR analysis for future context

@@ -18,7 +18,6 @@ use tracing::info;
 
 use crate::cli::{PrArgs, TriageArgs};
 use crate::config::Config;
-use crate::db::Database;
 use crate::github::sync as gh_sync;
 use crate::github::Client as GhClient;
 use crate::pipelines;
@@ -132,7 +131,7 @@ pub async fn execute(
     number: u64,
     is_pr: bool,
     config: &Config,
-    db: &Database,
+    db: &dyn crate::db::backend::DatabaseBackend,
     gh: &GhClient,
     apply: bool,
     triggered_by: Option<&str>,

@@ -5,8 +5,8 @@ use tracing::info;
 use super::truncate;
 use crate::cli::QueueArgs;
 use crate::config::Config;
+use crate::db::backend::DatabaseBackend;
 use crate::db::pulls::PullRequest;
-use crate::db::Database;
 use crate::export::ExportManager;
 use crate::github::Client as GhClient;
 
@@ -26,7 +26,7 @@ struct QueueOutput {
 
 pub async fn run(
     config: &Config,
-    db: &Database,
+    db: &dyn DatabaseBackend,
     _gh: &GhClient,
     args: &QueueArgs,
     json: bool,

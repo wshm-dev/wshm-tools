@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::config::Config;
-use crate::db::Database;
+use crate::db::backend::DatabaseBackend;
 
 #[derive(Serialize)]
 struct StatusOutput {
@@ -50,7 +50,7 @@ pub struct PrBrief {
     pub age_days: i64,
 }
 
-pub fn show(db: &Database, json: bool) -> Result<()> {
+pub fn show(db: &dyn DatabaseBackend, json: bool) -> Result<()> {
     let open_issues = db.get_open_issues()?;
     let untriaged = db.get_untriaged_issues()?;
     let open_pulls = db.get_open_pulls()?;
@@ -107,7 +107,7 @@ pub fn show(db: &Database, json: bool) -> Result<()> {
 }
 
 /// Build a summary from the local database cache.
-pub fn build_summary(config: &Config, db: &Database) -> Result<Summary> {
+pub fn build_summary(config: &Config, db: &dyn DatabaseBackend) -> Result<Summary> {
     let open_issues = db.get_open_issues()?;
     let untriaged = db.get_untriaged_issues()?;
     let open_pulls = db.get_open_pulls()?;
@@ -326,7 +326,7 @@ fn format_terminal(summary: &Summary) -> String {
 }
 
 /// Display a daily digest summary (same data format as notifications would send).
-pub fn show_summary(config: &Config, db: &Database, json: bool) -> Result<()> {
+pub fn show_summary(config: &Config, db: &dyn DatabaseBackend, json: bool) -> Result<()> {
     let summary = build_summary(config, db)?;
 
     if json {
