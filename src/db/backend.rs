@@ -37,6 +37,10 @@ pub trait DatabaseBackend: Send + Sync {
     fn get_open_pulls(&self) -> Result<Vec<PullRequest>>;
     fn get_unanalyzed_pulls(&self) -> Result<Vec<PullRequest>>;
     fn get_pr_analysis(&self, pr_number: u64) -> Result<Option<PrAnalysisRow>>;
+    /// Recently-closed pull requests (highest `updated_at` first), capped
+    /// at `limit`. Backs the changelog view in TUI and the /api/v1/changelog
+    /// endpoint.
+    fn get_closed_pulls(&self, limit: usize) -> Result<Vec<PullRequest>>;
 
     // ── Triage ──────────────────────────────────────────────────
 
@@ -153,6 +157,10 @@ impl DatabaseBackend for super::Database {
 
     fn get_pr_analysis(&self, pr_number: u64) -> Result<Option<PrAnalysisRow>> {
         self.get_pr_analysis(pr_number)
+    }
+
+    fn get_closed_pulls(&self, limit: usize) -> Result<Vec<PullRequest>> {
+        self.get_closed_pulls(limit)
     }
 
     fn upsert_triage_result(&self, result: &IssueClassification, issue_number: u64) -> Result<()> {

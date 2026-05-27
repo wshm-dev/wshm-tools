@@ -12,7 +12,6 @@ use std::io;
 
 use crate::config::Config;
 use crate::db::backend::DatabaseBackend;
-use crate::Database;
 
 pub async fn run(config: &Config, db: &dyn DatabaseBackend) -> Result<()> {
     // Setup terminal

@@ -14,7 +14,6 @@ use std::sync::OnceLock;
 
 use crate::config::Config;
 use crate::db::backend::DatabaseBackend;
-use crate::Database;
 use crate::github::Client as GhClient;
 
 // --- Feature gate hook ---
@@ -101,12 +100,16 @@ pub fn apply_output_hook(text: &str) -> String {
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-pub type AutoFixHook =
-    for<'a> fn(&'a Config, &'a Database, &'a GhClient, u64) -> BoxFuture<'a, anyhow::Result<()>>;
+pub type AutoFixHook = for<'a> fn(
+    &'a Config,
+    &'a dyn DatabaseBackend,
+    &'a GhClient,
+    u64,
+) -> BoxFuture<'a, anyhow::Result<()>>;
 
 pub type ReviewHook = for<'a> fn(
     &'a Config,
-    &'a Database,
+    &'a dyn DatabaseBackend,
     &'a GhClient,
     u64,
     bool,

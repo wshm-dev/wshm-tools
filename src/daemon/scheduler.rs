@@ -87,7 +87,7 @@ pub async fn run(state: Arc<DaemonState>) {
             continue;
         }
         info!("Periodic sync triggered (incremental)");
-        match github::sync::incremental_sync_full(&state.gh(), &state.db).await {
+        match github::sync::incremental_sync_full(&state.gh(), state.db.as_ref()).await {
             Ok(_) => {
                 info!("Periodic sync complete");
 
@@ -138,7 +138,7 @@ pub async fn run(state: Arc<DaemonState>) {
 
             match pipelines::triage::run_with_filters(
                 &state.config,
-                &state.db,
+                state.db.as_ref(),
                 &state.gh(),
                 &args,
                 pipelines::triage::OutputFormat::Text,
@@ -190,7 +190,7 @@ pub async fn run(state: Arc<DaemonState>) {
 
             match pipelines::triage::run_with_filters(
                 &state.config,
-                &state.db,
+                state.db.as_ref(),
                 &state.gh(),
                 &args,
                 pipelines::triage::OutputFormat::Text,

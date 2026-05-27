@@ -99,6 +99,20 @@ impl Database {
         self.with_conn(get_pulls_needing_analysis)
     }
 
+    pub fn get_closed_pulls(&self, limit: usize) -> Result<Vec<PullRequest>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT number, title, body, state, labels, author, head_sha, base_sha, head_ref, base_ref, mergeable, ci_status, created_at, updated_at
+                 FROM pull_requests WHERE state = 'closed'
+                 ORDER BY updated_at DESC LIMIT ?1",
+            )?;
+            let pulls = stmt
+                .query_map(params![limit as i64], row_to_pull)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(pulls)
+        })
+    }
+
     /// Upsert one PR analysis row. Extracted from `pipelines::pr_analysis`
     /// so the pipeline can run against any `DatabaseBackend` impl rather
     /// than reaching into a SQLite-specific `with_conn`.
