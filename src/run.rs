@@ -28,9 +28,7 @@ pub fn triage_format(cli: &Cli) -> OutputFormat {
 /// Load the per-repo config, open the database (as a trait object so the
 /// Pro binary can swap in a Postgres backend at runtime), and build a
 /// GitHub client.
-pub fn init_core(
-    cli: &Cli,
-) -> Result<(crate::Config, Arc<dyn DatabaseBackend>, crate::Client)> {
+pub fn init_core(cli: &Cli) -> Result<(crate::Config, Arc<dyn DatabaseBackend>, crate::Client)> {
     let config = crate::Config::load(cli)?;
     let db: Arc<dyn DatabaseBackend> = Arc::new(crate::Database::open(&config)?);
     let gh = crate::Client::new(&config)?;

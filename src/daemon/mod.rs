@@ -48,7 +48,12 @@ pub struct DaemonState {
 }
 
 impl DaemonState {
-    pub fn new(db: Arc<dyn DatabaseBackend>, gh: Arc<GhClient>, config: Arc<Config>, apply: bool) -> Self {
+    pub fn new(
+        db: Arc<dyn DatabaseBackend>,
+        gh: Arc<GhClient>,
+        config: Arc<Config>,
+        apply: bool,
+    ) -> Self {
         // Legacy `apply: true` upgrades the triage/analyze/auto_pr trio so
         // existing setups keep behaving the same after this migration.
         let mut features = crate::config::RepoFeatures::default();

@@ -6,10 +6,10 @@ use serde::Serialize;
 use super::truncate;
 use crate::cli::HealthArgs;
 use crate::config::{IssueScoringConfig, PrScoringConfig};
+use crate::db::backend::DatabaseBackend;
 use crate::db::issues::Issue;
 use crate::db::pulls::PullRequest;
 use crate::db::triage::TriageResultRow;
-use crate::db::backend::DatabaseBackend;
 
 /// A group of duplicate PRs addressing the same topic
 #[derive(Debug, Clone, Serialize)]

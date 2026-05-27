@@ -52,7 +52,11 @@ pub async fn incremental_sync_full(gh: &Client, db: &dyn DatabaseBackend) -> Res
 }
 
 /// Forever-incremental PR sync: stops paginating once we hit PRs older than `since`.
-async fn sync_pulls_incremental(gh: &Client, db: &dyn DatabaseBackend, since: Option<&str>) -> Result<()> {
+async fn sync_pulls_incremental(
+    gh: &Client,
+    db: &dyn DatabaseBackend,
+    since: Option<&str>,
+) -> Result<()> {
     if since.is_some() {
         info!(
             "Syncing pull requests (incremental, since {})",

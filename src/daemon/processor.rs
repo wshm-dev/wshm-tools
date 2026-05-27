@@ -419,7 +419,15 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
         apply: state.apply(),
     };
 
-    pipelines::pr_analysis::run(&state.config, state.db.as_ref(), &state.gh(), &args, false, None).await?;
+    pipelines::pr_analysis::run(
+        &state.config,
+        state.db.as_ref(),
+        &state.gh(),
+        &args,
+        false,
+        None,
+    )
+    .await?;
 
     // Store in ICM if enabled
     if state.config.daemon.icm_enabled {
