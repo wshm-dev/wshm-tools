@@ -211,7 +211,7 @@ async fn handle_issue(state: &DaemonState, event: &WebhookEvent) -> anyhow::Resu
         return Ok(());
     }
     // Force sync issues (bypass throttle — we know there's a new event)
-    gh_sync::sync_issues_now(&state.gh(), &state.db).await?;
+    gh_sync::sync_issues_now(&state.gh(), state.db.as_ref()).await?;
 
     // The list endpoint lags issue creation by a few seconds (replicated
     // index), so a sync right after `issues.opened` can miss the brand-new
@@ -286,7 +286,7 @@ async fn handle_issue(state: &DaemonState, event: &WebhookEvent) -> anyhow::Resu
 
     pipelines::triage::run(
         &state.config,
-        &state.db,
+        state.db.as_ref(),
         &state.gh(),
         &args,
         pipelines::triage::OutputFormat::Text,
@@ -354,7 +354,7 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
         return Ok(());
     }
     // Force sync pulls (bypass throttle — we know there's a new event)
-    gh_sync::sync_pulls_now(&state.gh(), &state.db).await?;
+    gh_sync::sync_pulls_now(&state.gh(), state.db.as_ref()).await?;
 
     // The list endpoint lags PR creation by a few seconds (replicated index),
     // so a sync right after `pull_request.opened` can miss the brand-new PR,
@@ -419,7 +419,7 @@ async fn handle_pull_request(state: &DaemonState, event: &WebhookEvent) -> anyho
         apply: state.apply(),
     };
 
-    pipelines::pr_analysis::run(&state.config, &state.db, &state.gh(), &args, false, None).await?;
+    pipelines::pr_analysis::run(&state.config, state.db.as_ref(), &state.gh(), &args, false, None).await?;
 
     // Store in ICM if enabled
     if state.config.daemon.icm_enabled {
@@ -494,7 +494,7 @@ async fn handle_comment(state: &DaemonState, event: &WebhookEvent) -> anyhow::Re
         number,
         is_pr,
         &state.config,
-        &state.db,
+        state.db.as_ref(),
         &state.gh(),
         state.apply(),
         Some(triggered_by),

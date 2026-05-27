@@ -20,13 +20,14 @@ use tracing::{info, warn};
 
 use crate::cli::DaemonArgs;
 use crate::config::{Config, GlobalConfig};
+use crate::db::backend::DatabaseBackend;
 use crate::db::Database;
 use crate::github::Client as GhClient;
 
 use self::processor::WebhookEvent;
 
 pub struct DaemonState {
-    pub db: Arc<Database>,
+    pub db: Arc<dyn DatabaseBackend>,
     /// Hot-reloadable GitHub client. The inner Arc is swapped under a
     /// RwLock when a `github_token` secret is added or removed via the
     /// web UI, so the new token is picked up without a daemon restart.
@@ -47,7 +48,7 @@ pub struct DaemonState {
 }
 
 impl DaemonState {
-    pub fn new(db: Arc<Database>, gh: Arc<GhClient>, config: Arc<Config>, apply: bool) -> Self {
+    pub fn new(db: Arc<dyn DatabaseBackend>, gh: Arc<GhClient>, config: Arc<Config>, apply: bool) -> Self {
         // Legacy `apply: true` upgrades the triage/analyze/auto_pr trio so
         // existing setups keep behaving the same after this migration.
         let mut features = crate::config::RepoFeatures::default();
@@ -56,7 +57,7 @@ impl DaemonState {
     }
 
     pub fn with_features(
-        db: Arc<Database>,
+        db: Arc<dyn DatabaseBackend>,
         gh: Arc<GhClient>,
         config: Arc<Config>,
         apply: bool,
@@ -199,7 +200,7 @@ impl MultiDaemonState {
         std::fs::create_dir_all(&config.wshm_dir)?;
         config.web.resolve_password(&config.wshm_dir);
 
-        let db = Arc::new(Database::open(&config)?);
+        let db = Arc::new(Database::open(&config)?) as Arc<dyn DatabaseBackend>;
         let gh = Arc::new(GhClient::new(&config)?);
         let state = Arc::new(DaemonState::new(
             db,
@@ -271,7 +272,7 @@ pub async fn run(mut config: Config, args: DaemonArgs) -> Result<()> {
             config.daemon.webhook_secret.clone()
         });
 
-    let db = Arc::new(Database::open(&config)?);
+    let db = Arc::new(Database::open(&config)?) as Arc<dyn DatabaseBackend>;
     let gh = Arc::new(GhClient::new(&config)?);
     let config = Arc::new(config);
 
@@ -510,7 +511,7 @@ pub async fn run_multi_with_extensions(
             web_password_resolved = true;
         }
 
-        let db = Arc::new(Database::open(&config)?);
+        let db = Arc::new(Database::open(&config)?) as Arc<dyn DatabaseBackend>;
         let gh = Arc::new(GhClient::new(&config)?);
         let apply = entry.apply.unwrap_or(global_apply);
 

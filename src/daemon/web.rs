@@ -1431,25 +1431,19 @@ async fn api_changelog(
             }
         }
 
-        let closed_prs = ds.db.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT number, title, labels, author, updated_at
-                 FROM pull_requests WHERE state = 'closed'
-                 ORDER BY updated_at DESC LIMIT 100",
-            )?;
-            let rows = stmt
-                .query_map([], |row| {
-                    let labels_str: String = row.get(2)?;
-                    Ok(json!({
-                        "number": row.get::<_, u64>(0)?,
-                        "title": row.get::<_, String>(1)?,
-                        "labels": serde_json::from_str::<Vec<String>>(&labels_str).unwrap_or_default(),
-                        "author": row.get::<_, Option<String>>(3)?,
-                        "merged_at": row.get::<_, String>(4)?,
-                    }))
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(rows)
+        let closed_prs = ds.db.get_closed_pulls(100).map(|pulls| {
+            pulls
+                .into_iter()
+                .map(|pr| {
+                    json!({
+                        "number": pr.number,
+                        "title": pr.title,
+                        "labels": pr.labels,
+                        "author": pr.author,
+                        "merged_at": pr.updated_at,
+                    })
+                })
+                .collect::<Vec<_>>()
         });
 
         if let Ok(prs) = closed_prs {
@@ -1701,9 +1695,9 @@ async fn run_sync(state: &WebState, repo_filter: Option<&str>, full: bool) -> Re
     let mut errors = Vec::new();
     for (slug, daemon) in targets {
         let result = if full {
-            crate::github::sync::full_sync(&daemon.gh(), &daemon.db).await
+            crate::github::sync::full_sync(&daemon.gh(), daemon.db.as_ref()).await
         } else {
-            crate::github::sync::incremental_sync_full(&daemon.gh(), &daemon.db).await
+            crate::github::sync::incremental_sync_full(&daemon.gh(), daemon.db.as_ref()).await
         };
         match result {
             Ok(()) => synced.push(slug),

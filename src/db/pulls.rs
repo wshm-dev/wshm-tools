@@ -98,6 +98,49 @@ impl Database {
     pub fn get_pulls_needing_analysis(&self) -> Result<Vec<PullRequest>> {
         self.with_conn(get_pulls_needing_analysis)
     }
+
+    pub fn get_closed_pulls(&self, limit: usize) -> Result<Vec<PullRequest>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT number, title, body, state, labels, author, head_sha, base_sha, head_ref, base_ref, mergeable, ci_status, created_at, updated_at
+                 FROM pull_requests WHERE state = 'closed'
+                 ORDER BY updated_at DESC LIMIT ?1",
+            )?;
+            let pulls = stmt
+                .query_map(params![limit as i64], row_to_pull)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(pulls)
+        })
+    }
+
+    /// Upsert one PR analysis row. Extracted from `pipelines::pr_analysis`
+    /// so the pipeline can run against any `DatabaseBackend` impl rather
+    /// than reaching into a SQLite-specific `with_conn`.
+    pub fn upsert_pr_analysis(&self, row: &PrAnalysisRow) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO pr_analyses (pr_number, summary, risk_level, pr_type, review_notes, analyzed_at, content_hash)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(pr_number) DO UPDATE SET
+                    summary = excluded.summary,
+                    risk_level = excluded.risk_level,
+                    pr_type = excluded.pr_type,
+                    review_notes = excluded.review_notes,
+                    analyzed_at = excluded.analyzed_at,
+                    content_hash = excluded.content_hash",
+                params![
+                    row.pr_number,
+                    row.summary,
+                    row.risk_level,
+                    row.pr_type,
+                    row.review_notes,
+                    row.analyzed_at,
+                    row.content_hash,
+                ],
+            )?;
+            Ok(())
+        })
+    }
 }
 
 pub fn upsert_pull(conn: &Connection, pr: &PullRequest) -> Result<()> {

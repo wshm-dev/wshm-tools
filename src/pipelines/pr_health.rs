@@ -9,7 +9,7 @@ use crate::config::{IssueScoringConfig, PrScoringConfig};
 use crate::db::issues::Issue;
 use crate::db::pulls::PullRequest;
 use crate::db::triage::TriageResultRow;
-use crate::db::Database;
+use crate::db::backend::DatabaseBackend;
 
 /// A group of duplicate PRs addressing the same topic
 #[derive(Debug, Clone, Serialize)]
@@ -60,7 +60,7 @@ pub struct HealthReport {
     pub oversized: Vec<OversizedPr>,
 }
 
-pub fn run(db: &Database, args: &HealthArgs, json: bool) -> Result<()> {
+pub fn run(db: &dyn DatabaseBackend, args: &HealthArgs, json: bool) -> Result<()> {
     let pulls = db.get_open_pulls()?;
 
     if pulls.is_empty() {

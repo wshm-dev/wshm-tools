@@ -8,7 +8,7 @@ use crate::ai::schemas::IssueClassification;
 use crate::cli::TriageArgs;
 use crate::config::Config;
 use crate::db::issues::Issue;
-use crate::db::Database;
+use crate::db::backend::DatabaseBackend;
 use crate::export::{EventKind, ExportEvent, ExportManager};
 use crate::github::Client as GhClient;
 use crate::pro_hooks;
@@ -31,7 +31,7 @@ pub enum OutputFormat {
 
 pub async fn run(
     config: &Config,
-    db: &Database,
+    db: &dyn DatabaseBackend,
     gh: &GhClient,
     args: &TriageArgs,
     format: OutputFormat,
@@ -47,7 +47,7 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 pub async fn run_with_filters(
     config: &Config,
-    db: &Database,
+    db: &dyn DatabaseBackend,
     gh: &GhClient,
     args: &TriageArgs,
     format: OutputFormat,
@@ -282,7 +282,7 @@ fn no_labels_min_age_from(filters: Option<&crate::config::RepoFilters>) -> u32 {
 async fn triage_issue(
     config: &Config,
     ai: &AiBackend,
-    db: &Database,
+    db: &dyn DatabaseBackend,
     gh: &GhClient,
     issue: &Issue,
     existing_issues: &[Issue],

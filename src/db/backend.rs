@@ -37,15 +37,43 @@ pub trait DatabaseBackend: Send + Sync {
     fn get_open_pulls(&self) -> Result<Vec<PullRequest>>;
     fn get_unanalyzed_pulls(&self) -> Result<Vec<PullRequest>>;
     fn get_pr_analysis(&self, pr_number: u64) -> Result<Option<PrAnalysisRow>>;
+    /// Recently-closed pull requests (highest `updated_at` first), capped
+    /// at `limit`. Backs the changelog view in TUI and the /api/v1/changelog
+    /// endpoint.
+    fn get_closed_pulls(&self, limit: usize) -> Result<Vec<PullRequest>>;
 
     // ── Triage ──────────────────────────────────────────────────
 
     fn upsert_triage_result(&self, result: &IssueClassification, issue_number: u64) -> Result<()>;
+    /// Same as `upsert_triage_result` but also persists the content hash so
+    /// the next batch can detect whether the issue changed and skip re-spending
+    /// AI credits.
+    fn upsert_triage_result_with_hash(
+        &self,
+        result: &IssueClassification,
+        issue_number: u64,
+        content_hash: Option<&str>,
+    ) -> Result<()>;
     fn get_triage_result(&self, issue_number: u64) -> Result<Option<TriageResultRow>>;
     fn get_stale_triage_results(&self, max_age_hours: u32) -> Result<Vec<TriageResultRow>>;
     fn get_wshm_applied_labels(&self, issue_number: u64) -> Result<Vec<String>>;
     fn recent_activity(&self, limit: usize) -> Result<Vec<TriageResultRow>>;
     fn is_triaged(&self, issue_number: u64) -> Result<bool>;
+
+    // ── PR analysis ─────────────────────────────────────────────
+
+    /// Open PRs that need (re)analysis: never analyzed OR content_hash changed.
+    fn get_pulls_needing_analysis(&self) -> Result<Vec<PullRequest>>;
+    /// Upsert one row into `pr_analyses`. Replaces the previous inline
+    /// `with_conn(|conn| INSERT ... ON CONFLICT ...)` so callers can run
+    /// against any backend that implements this trait.
+    fn upsert_pr_analysis(&self, row: &PrAnalysisRow) -> Result<()>;
+
+    // ── Admin / maintenance ─────────────────────────────────────
+
+    /// Wipe every triage result and PR analysis. Used by the `revert` flow
+    /// to undo all wshm-applied state before re-syncing from the forge.
+    fn clear_triage_and_analyses(&self) -> Result<()>;
 
     // ── Sync Log ────────────────────────────────────────────────
 
@@ -131,8 +159,21 @@ impl DatabaseBackend for super::Database {
         self.get_pr_analysis(pr_number)
     }
 
+    fn get_closed_pulls(&self, limit: usize) -> Result<Vec<PullRequest>> {
+        self.get_closed_pulls(limit)
+    }
+
     fn upsert_triage_result(&self, result: &IssueClassification, issue_number: u64) -> Result<()> {
         self.upsert_triage_result(result, issue_number)
+    }
+
+    fn upsert_triage_result_with_hash(
+        &self,
+        result: &IssueClassification,
+        issue_number: u64,
+        content_hash: Option<&str>,
+    ) -> Result<()> {
+        self.upsert_triage_result_with_hash(result, issue_number, content_hash)
     }
 
     fn get_triage_result(&self, issue_number: u64) -> Result<Option<TriageResultRow>> {
@@ -192,5 +233,17 @@ impl DatabaseBackend for super::Database {
 
     fn get_pending_events(&self) -> Result<Vec<WebhookEventRow>> {
         self.get_pending_events()
+    }
+
+    fn get_pulls_needing_analysis(&self) -> Result<Vec<PullRequest>> {
+        self.get_pulls_needing_analysis()
+    }
+
+    fn upsert_pr_analysis(&self, row: &PrAnalysisRow) -> Result<()> {
+        self.upsert_pr_analysis(row)
+    }
+
+    fn clear_triage_and_analyses(&self) -> Result<()> {
+        self.clear_triage_and_analyses()
     }
 }
