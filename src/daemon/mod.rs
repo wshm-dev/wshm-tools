@@ -519,6 +519,35 @@ pub async fn run_multi_with_extensions(
     let mut repos = HashMap::new();
     let mut web_password_resolved = false;
     for entry in &global.repos {
+        // Stateless deploys mount the repos dir as an emptyDir, so the
+        // checkout may be missing on first boot. Clone it from GitHub
+        // using GITHUB_TOKEN before the rest of the setup runs.
+        // Skipped when the entry path already contains a checkout.
+        if !entry.path.join(".git").exists() {
+            if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+                let url = format!("https://github.com/{}.git", entry.slug);
+                if let Some(parent) = entry.path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                match crate::github::git::clone_repo(&url, &entry.path, &token) {
+                    Ok(_) => info!("Cloned {} into {}", entry.slug, entry.path.display()),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to clone {} into {} ({e}); daemon may degrade for this repo",
+                            entry.slug,
+                            entry.path.display()
+                        );
+                    }
+                }
+            } else {
+                tracing::warn!(
+                    "Repo {} not present at {} and GITHUB_TOKEN unset — skipping clone, daemon may degrade",
+                    entry.slug,
+                    entry.path.display()
+                );
+            }
+        }
+
         let mut config = Config::load_for_repo(&entry.path, &entry.slug)?;
 
         // Ensure .wshm dir exists
