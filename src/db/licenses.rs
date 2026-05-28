@@ -23,6 +23,23 @@ pub struct StoredLicense {
     pub last_validated_at: Option<String>,
 }
 
+/// Optional sink that mirrors every `store()` call to an alternate
+/// backend (e.g. Postgres in wshm-pro stateless mode). Registered once
+/// at process startup; missing hook = no-op (OSS default).
+pub type LicenseStoreHook = fn(
+    jwt: &str,
+    license_key: Option<&str>,
+    plan: Option<&str>,
+    activated_by: Option<&str>,
+    expires_at: Option<&str>,
+);
+
+static LICENSE_STORE_HOOK: std::sync::OnceLock<LicenseStoreHook> = std::sync::OnceLock::new();
+
+pub fn set_license_store_hook(f: LicenseStoreHook) {
+    let _ = LICENSE_STORE_HOOK.set(f);
+}
+
 /// Upsert the active license. Subsequent activations overwrite the row
 /// in place (single-row table) so callers don't have to delete first.
 pub fn store(
@@ -47,6 +64,9 @@ pub fn store(
         params![jwt, license_key, plan, activated_by, expires_at],
     )
     .context("Failed to upsert license row")?;
+    if let Some(hook) = LICENSE_STORE_HOOK.get() {
+        hook(jwt, license_key, plan, activated_by, expires_at);
+    }
     Ok(())
 }
 
