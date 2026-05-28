@@ -402,6 +402,20 @@ pub struct DaemonExtensions {
     pub extra_api: Option<axum::Router<Arc<crate::daemon::web::WebState>>>,
     /// Replacement SPA router (e.g. a Pro web-dist with extra routes).
     pub spa_override: Option<axum::Router<Arc<crate::daemon::web::WebState>>>,
+    /// Optional factory that produces the storage backend for one repo.
+    /// When `Some`, the multi-repo daemon calls this instead of opening a
+    /// per-repo SQLite `Database`. Pro uses it to share a single Postgres
+    /// pool across all repos while scoping each backend instance by repo
+    /// slug. When `None`, falls back to `Database::open(config)` (the
+    /// historical OSS-only behaviour).
+    #[allow(clippy::type_complexity)]
+    pub db_factory: Option<
+        Arc<
+            dyn Fn(&crate::Config) -> anyhow::Result<Arc<dyn crate::db::backend::DatabaseBackend>>
+                + Send
+                + Sync,
+        >,
+    >,
 }
 
 /// Run daemon in multi-repo mode from a global config file.
@@ -516,7 +530,10 @@ pub async fn run_multi_with_extensions(
             web_password_resolved = true;
         }
 
-        let db = Arc::new(Database::open(&config)?) as Arc<dyn DatabaseBackend>;
+        let db = match &extensions.db_factory {
+            Some(factory) => factory(&config)?,
+            None => Arc::new(Database::open(&config)?) as Arc<dyn DatabaseBackend>,
+        };
         let gh = Arc::new(GhClient::new(&config)?);
         let apply = entry.apply.unwrap_or(global_apply);
 
