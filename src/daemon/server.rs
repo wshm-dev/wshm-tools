@@ -57,20 +57,20 @@ pub async fn run(
     // daemon also has a working RBAC + login flow out of the box. Same logic
     // as run_multi_with_extensions; kept here too because daemon::run takes
     // a different code path.
-    let users = match crate::auth::UserStore::open(
+    let users: Option<Arc<dyn crate::auth::UserStoreBackend>> = match crate::auth::UserStore::open(
         &dirs::home_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("."))
             .join(".wshm")
             .join("users.db"),
     ) {
-        Ok(store) => Some(Arc::new(store)),
+        Ok(store) => Some(Arc::new(store) as Arc<dyn crate::auth::UserStoreBackend>),
         Err(e) => {
             warn!("Failed to open users db: {e} — login disabled");
             None
         }
     };
     if let Some(store) = users.as_ref() {
-        if let Err(e) = crate::auth::seed_admin_if_empty(store).await {
+        if let Err(e) = crate::auth::seed_admin_if_empty(store.as_ref()).await {
             warn!("Failed to seed admin user: {e}");
         }
     }
@@ -223,7 +223,7 @@ pub async fn run_multi(
 
     // Seed admin user if a UserStore is provided and the table is empty.
     if let Some(store) = extensions.users.as_ref() {
-        if let Err(e) = crate::auth::seed_admin_if_empty(store).await {
+        if let Err(e) = crate::auth::seed_admin_if_empty(store.as_ref()).await {
             warn!("Failed to seed admin user: {e}");
         }
     }

@@ -389,7 +389,7 @@ pub async fn run(mut config: Config, args: DaemonArgs) -> Result<()> {
 #[derive(Default)]
 pub struct DaemonExtensions {
     /// Enable RBAC mode by passing a populated `UserStore`.
-    pub users: Option<Arc<crate::auth::UserStore>>,
+    pub users: Option<Arc<dyn crate::auth::UserStoreBackend>>,
     /// In-memory log buffer fed by the tracing layer; exposed via
     /// `GET /api/v1/logs`. Pass the same instance that's wired into the
     /// `tracing_subscriber` registry.

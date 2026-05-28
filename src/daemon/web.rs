@@ -49,7 +49,7 @@ pub struct WebState {
     /// Optional RBAC store. `Some` enables multi-user accounts with roles
     /// (admin/member/viewer); `None` keeps the legacy single-credential
     /// `[web].username/password` Basic Auth flow.
-    pub users: Option<Arc<crate::auth::UserStore>>,
+    pub users: Option<Arc<dyn crate::auth::UserStoreBackend>>,
     /// Optional in-memory log buffer fed by the tracing layer. When `Some`,
     /// `GET /api/v1/logs` returns the daemon's recent log lines.
     pub logs: Option<Arc<crate::daemon::log_buffer::LogBuffer>>,
@@ -3094,7 +3094,7 @@ pub fn web_routes(multi: Arc<MultiDaemonState>) -> Router {
 /// The `WebState` is built from these inputs and shared with every sub-router.
 pub fn web_routes_with_extensions(
     multi: Arc<MultiDaemonState>,
-    users: Option<Arc<crate::auth::UserStore>>,
+    users: Option<Arc<dyn crate::auth::UserStoreBackend>>,
     logs: Option<Arc<crate::daemon::log_buffer::LogBuffer>>,
     secrets: Option<Arc<dyn crate::secrets::SecretStore>>,
     extra_api: Option<Router<Arc<WebState>>>,
